@@ -1633,7 +1633,7 @@ const STUDENT_ALLOWED_FIELDS = new Set([
 ]);
 
 function ageAtEndOf2026(isoDate) {
-  if (!/^\\d{4}-\\d{2}-\\d{2}$/.test(isoDate || "")) return "";
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(isoDate || "")) return "";
   const [year, month, day] = isoDate.split("-").map(Number);
   const date = new Date(Date.UTC(year, month - 1, day));
   if (date.getUTCFullYear() !== year || date.getUTCMonth() !== month - 1 || date.getUTCDate() !== day || year > 2026 || year < 1900) return "";
@@ -1719,7 +1719,8 @@ function parseCsv(input) {
 
 function normalizeCsvRows(rows) {
   const aliases = {
-    nome_completo: "fullName", nome: "fullName", full_name: "fullName",\n    pcd: "pcdStatus", pessoa_com_deficiencia: "pcdStatus", data_cadastro: "registrationDate",
+    nome_completo: "fullName", nome: "fullName", full_name: "fullName",
+    pcd: "pcdStatus", pessoa_com_deficiencia: "pcdStatus", data_cadastro: "registrationDate",
     nome_social: "preferredName", nome_preferido: "preferredName",
     matricula_codigo: "enrollmentCode", codigo_matricula: "enrollmentCode", matricula: "enrollmentCode",
     data_nascimento: "birthDate", nascimento: "birthDate",
@@ -1761,7 +1762,11 @@ function normalizeCsvRows(rows) {
       const target = aliases[key];
       if (target && value) normalized[target] = value;
     });
-    if (normalized.pcdStatus) {\n      const pcd = normalizeHeader(normalized.pcdStatus);\n      normalized.pcdStatus = ["sim", "s"].includes(pcd) ? "Sim" : ["nao", "n"].includes(pcd) ? "Não" : "";\n    }\n    normalized.postalCode = formatPostalCode(normalized.postalCode || "");
+    if (normalized.pcdStatus) {
+      const pcd = normalizeHeader(normalized.pcdStatus);
+      normalized.pcdStatus = ["sim", "s"].includes(pcd) ? "Sim" : ["nao", "n"].includes(pcd) ? "Não" : "";
+    }
+    normalized.postalCode = formatPostalCode(normalized.postalCode || "");
     normalized.guardianPhone = formatPhone(normalized.guardianPhone || "");
     normalized.studentPhone = formatPhone(normalized.studentPhone || "");
     normalized.phone = formatPhone(normalized.phone || "");
