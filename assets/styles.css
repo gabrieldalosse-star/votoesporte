@@ -203,7 +203,7 @@ h1, h2, h3 { letter-spacing: -.035em; }
 .save-attendance-area { display: flex; align-items: center; gap: 11px; }
 .save-state { color: var(--ink-soft); font-size: .74rem; }
 .save-state.changed { color: var(--warning); font-weight: 750; }
-.attendance-controls { display: grid; grid-template-columns: minmax(210px, 1fr) 170px minmax(190px, .8fr); align-items: end; gap: 15px; margin-bottom: 16px; padding: 18px; }
+.attendance-controls { display: grid; grid-template-columns: minmax(210px, 1fr) 170px 130px minmax(190px, .8fr); align-items: end; gap: 15px; margin-bottom: 16px; padding: 18px; }
 label { display: grid; gap: 6px; color: #425449; font-size: .74rem; font-weight: 750; }
 input, select, textarea { width: 100%; border: 1px solid #cfdad3; border-radius: 9px; color: var(--ink); background: white; }
 input, select { height: 41px; padding: 0 11px; }
@@ -369,7 +369,7 @@ fieldset legend { padding: 0 6px; color: var(--forest); font-size: .74rem; font-
   .topbar { padding-left: 20px; }
   .classes-layout { grid-template-columns: 1fr; }
   .class-detail { min-height: auto; }
-  .attendance-controls { grid-template-columns: 1fr 170px; }
+  .attendance-controls { grid-template-columns: 1fr 170px 130px; }
   .attendance-summary { grid-column: 1 / -1; }
   .import-grid { grid-template-columns: 1fr; }
 }
@@ -443,6 +443,11 @@ fieldset legend { padding: 0 6px; color: var(--forest); font-size: .74rem; font-
 .sidebar .municipal-mark { border-color: rgba(6,59,121,.12); }
 .fieldset-note { margin: 12px 0 0; color: var(--ink-soft); font-size: .76rem; line-height: 1.45; }
 .fieldset-note::before { content: "◌"; margin-right: 7px; color: var(--forest); font-weight: 900; }
+.progressive-details { margin-top: 16px; border-top: 1px solid var(--line); padding-top: 14px; }
+.progressive-details summary { cursor: pointer; color: var(--blue-deep); font-weight: 800; }
+.progressive-grid { margin-top: 14px; }
+.checkbox-label { display: flex; align-items: flex-start; gap: 8px; margin: 12px 0; color: var(--ink-soft); font-size: .84rem; line-height: 1.35; }
+.checkbox-label input { width: auto; margin-top: 2px; }
 .student-table th:nth-child(4), .student-table td:nth-child(4) { min-width: 112px; }
 .contact-actions { display: flex; flex-wrap: wrap; gap: 5px; min-width: 132px; }
 .contact-action { min-height: 30px; padding: 0 8px; border: 1px solid #c9daeb; border-radius: 8px; color: var(--forest); background: #fff; font-size: .68rem; font-weight: 800; transition: transform .16s ease, background .16s ease, border-color .16s ease; }
@@ -459,6 +464,9 @@ fieldset legend { padding: 0 6px; color: var(--forest); font-size: .74rem; font-
 .panel-heading .eyebrow { margin-bottom: 4px; }
 .panel-heading h3, .territory-zone-panel h3 { margin-bottom: 0; }
 .territory-map { position: relative; min-height: 385px; overflow: hidden; border: 1px solid #d0dfef; border-radius: 22px; background: linear-gradient(140deg, #f5faff, #e7f2ff); }
+.official-territory-map { min-height: 385px; width: 100%; background: #edf4f7; }
+.official-territory-map .leaflet-control-attribution { max-width: calc(100% - 16px); font-size: .65rem; }
+.territory-map-credit { margin: 8px 4px 0; color: var(--ink-soft); font-size: .7rem; line-height: 1.4; }
 .territory-svg { display: block; width: 100%; height: 100%; min-height: 385px; }
 .territory-map-background { fill: #f6fbff; }
 .territory-contour { fill: none; stroke: #c2dcf3; stroke-width: 12; stroke-linecap: round; opacity: .72; }
@@ -501,7 +509,7 @@ fieldset legend { padding: 0 6px; color: var(--forest); font-size: .74rem; font-
 .territory-report-row > span { color: var(--forest); font-weight: 850; font-size: .9rem; }
 .territory-report-row .progress-track { grid-column: 1 / -1; }
 @media (max-width: 940px) { .territory-layout { grid-template-columns: 1fr; } .territory-zone-list { max-height: 260px; } }
-@media (max-width: 640px) { .territory-summary { grid-template-columns: 1fr 1fr; } .territory-map { min-height: 290px; } .territory-svg, .territory-map-empty { min-height: 290px; } .territory-map-panel, .territory-zone-panel { padding: 16px; } .census-guidance { align-items: flex-start; flex-direction: column; } .census-guidance-tags { justify-content: flex-start; } .contact-actions { min-width: 118px; } }
+@media (max-width: 640px) { .territory-summary { grid-template-columns: 1fr 1fr; } .territory-map, .official-territory-map { min-height: 290px; } .territory-svg, .territory-map-empty { min-height: 290px; } .territory-map-panel, .territory-zone-panel { padding: 16px; } .census-guidance { align-items: flex-start; flex-direction: column; } .census-guidance-tags { justify-content: flex-start; } .contact-actions { min-width: 118px; } }
 
 /* Censo Esportivo V2 */
 .official-brand-row{display:flex;align-items:center;justify-content:center;gap:2rem;flex-wrap:wrap;background:#fff;border:1px solid #dce5ec;border-radius:18px;padding:14px;margin-bottom:18px}.official-brand-row img{max-height:95px;max-width:45%;width:auto;object-fit:contain}.censo-shortcuts{display:flex;gap:10px;flex-wrap:wrap;margin:0 0 22px}.censo-count-note,.censo-report-info{color:#50647a;font-size:.84rem;margin:8px 0 18px}.days-picker{display:flex;gap:8px;flex-wrap:wrap;margin-top:8px}.days-picker label{display:flex;gap:4px;align-items:center;border:1px solid #d4dfeb;padding:9px;border-radius:10px}.days-picker input{width:auto}.dialog fieldset[hidden]{display:none!important}#censo-student-primary .form-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}#censo-student-primary .form-grid label{min-width:0}#censo-student-primary .form-grid input,#censo-student-primary .form-grid select{width:100%}@media(max-width:640px){#censo-student-primary .form-grid{grid-template-columns:1fr}.official-brand-row img{max-height:76px}}

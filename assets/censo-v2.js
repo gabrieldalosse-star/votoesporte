@@ -30,33 +30,11 @@
   field(form,'schedule').value=values.schedule;
   return null;
  }
- const order=[['fullName','Nome'],['gender','Sexo'],['__age','Idade (calculada)'],['birthDate','Data Nascimento'],['street','Rua'],['number','Numero'],['neighborhood','Bairro'],['city','Cidade'],['postalCode','CEP'],['phone','Telefone'],['pcdStatus','PCD (restrito)'],['guardianName','Nome Responsavel'],['guardianPhone','Telefone Responsavel'],['registrationDate','Data Cadastro']];
- function setupStudent(){
-  const form=$('#student-form'),primary=$('#censo-student-primary');if(!form||!primary)return;
-  const grid=$('.form-grid',primary);grid.replaceChildren();
-  const heading=document.createElement('p');heading.className='fieldset-note';heading.textContent='Campos na mesma sequência da planilha de importação. A turma é a selecionada ao abrir o cadastro.';grid.before(heading);
-  const turma=document.createElement('label');turma.className='full-width';turma.textContent='TURMA';const turmaInput=document.createElement('input');turmaInput.id='censo-selected-class';turmaInput.readOnly=true;turma.append(turmaInput);grid.append(turma);
-  for(const [name,label] of order){let input=name==='__age'?$('#student-age-preview'):field(form,name);if(!input)continue;const holder=input.closest('label');if(!holder)continue;holder.replaceChildren();holder.append(document.createTextNode(label),input);grid.append(holder);}
-  // Preserve all auxiliary fields in the DOM for backwards-compatible writes, without displaying them.
-  $$('#student-form fieldset').forEach(f=>{if(f!==primary)f.hidden=true;});
-  const cep=field(form,'postalCode');let timer;
-  cep?.addEventListener('input',()=>{clearTimeout(timer);if(cep.value.replace(/\D/g,'').length===8)timer=setTimeout(()=>lookupCep(form),400);});
-  const city=field(form,'city');if(city&&!city.value)city.value='Votorantim';
- }
- async function lookupCep(form){
-  const cep=field(form,'postalCode').value.replace(/\D/g,'');if(cep.length!==8)return;
-  const notice=$('#censo-cep-notice');if(notice)notice.textContent='Consultando CEP…';
-  try{const ctrl=new AbortController();const timeout=setTimeout(()=>ctrl.abort(),4500);let response;try{response=await fetch(`https://viacep.com.br/ws/${cep}/json/`,{signal:ctrl.signal});}finally{clearTimeout(timeout)}const d=await response.json();if(d.erro)throw Error('CEP não encontrado');
-   const pairs=[['street',d.logradouro],['neighborhood',d.bairro],['city',d.localidade],['state',d.uf]];
-   for(const [key,value] of pairs){const input=field(form,key);if(input&&value&&!input.value.trim())input.value=value;}
-   if(notice)notice.textContent='Endereço sugerido por ViaCEP. Confira e edite os campos, se necessário.';
-  }catch(e){if(notice)notice.textContent='Consulta indisponível ou CEP não localizado. Preencha manualmente.';}
- }
- function openStudent(form){const turma=$('#censo-selected-class');const id=field(form,'classId')?.value;const select=$('#attendance-class');const opt=select?.querySelector(`option[value="${CSS.escape(id||'')}"]`);if(turma)turma.value=opt?.textContent||id||'Turma selecionada';
+ function openStudent(form){
   const reg=field(form,'registrationDate');if(reg&&!reg.value)reg.value=[new Date().getFullYear(),String(new Date().getMonth()+1).padStart(2,'0'),String(new Date().getDate()).padStart(2,'0')].join('-');
   const city=field(form,'city');if(city&&!city.value)city.value='Votorantim';
-  const notice=$('#censo-cep-notice');if(notice)notice.textContent='CEP opcional; consulta automática ao informar 8 dígitos. Todos os campos de endereço podem ser editados.';
  }
- function init(){setupStudent();const postal=field($('#student-form'),'postalCode');if(postal){const note=document.createElement('p');note.id='censo-cep-notice';note.className='fieldset-note';note.textContent='CEP opcional. Todos os endereços podem ser preenchidos manualmente.';postal.closest('label')?.after(note);}}
- window.CensoV2={openClass,prepareClass,openStudent};if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',init,{once:true});else init();
+ // The form structure belongs to index.html. This compatibility layer must
+ // never rearrange it: doing so previously detached the student fields.
+ window.CensoV2={openClass,prepareClass,openStudent};
 })();

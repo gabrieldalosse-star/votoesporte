@@ -27,6 +27,7 @@ import {
 } from "https://www.gstatic.com/firebasejs/11.0.2/firebase-firestore.js";
 
 const DEMO_STORE_KEY = "votorantim-esporte-chamada-demo-v1";
+const APP_VERSION = "7.0.0";
 const FIREBASE_REQUIRED_KEYS = ["apiKey", "authDomain", "projectId", "appId"];
 const PAGE_TITLES = {
   dashboard: ["VISÃO GERAL", "Bom trabalho!"],
@@ -93,10 +94,13 @@ const state = {
   classDetailTab: "students",
   studentsByClass: {},
   histories: {},
-  attendance: { classId: "", date: localDate(), records: {}, dirty: false },
+  attendance: { classId: "", date: localDate(), sessionTime: localTime(), records: {}, dirty: false },
   report: null,
   importRows: [],
   activeView: "dashboard",
+  territoryMap: null,
+  googleTerritoryMap: null,
+  censusHydrationId: 0,
   tourIndex: 0,
   unsubscribers: { classes: null, selectedStudents: null, territoryZones: null },
   selectedStudentsSubscriptionId: null
@@ -261,10 +265,18 @@ function wireStaticEvents() {
   ui["clear-attendance"].addEventListener("click", clearAttendance);
   ui["attendance-class"].addEventListener("change", onAttendanceFilterChange);
   ui["attendance-date"].addEventListener("change", onAttendanceFilterChange);
+  ui["attendance-time"].addEventListener("change", () => {
+    state.attendance.sessionTime = ui["attendance-time"].value || localTime();
+    state.attendance.dirty = true;
+    renderAttendance();
+  });
   ui["generate-report"].addEventListener("click", generateReport);
   ui["export-csv"].addEventListener("click", exportReportCsv);
   ui["print-report"].addEventListener("click", printReport);
   ui["import-file"].addEventListener("change", handleCsvFile);
+  ui["import-class"].addEventListener("change", updateImportReadiness);
+  ui["import-reviewed"].addEventListener("change", updateImportReadiness);
+  ui["lookup-postal-code"].addEventListener("click", lookupPostalCode);
   ui["confirm-import"].addEventListener("click", importStudents);
   ui["open-territory-import"].addEventListener("click", openTerritoryImportDialog);
   ui["territory-import-form"].addEventListener("submit", importTerritoryZones);
@@ -422,10 +434,9 @@ function populateTerritoryZoneOptions(selectedValue = ui["student-territory-zone
 function syncTerritoryFields(form) {
   const zoneId = form.elements.territoryZoneId?.value || "";
   const zone = state.territoryZones.find((item) => item.id === zoneId);
-  if (!zone) return;
-  form.elements.territoryZoneName.value = zone.name || "";
-  form.elements.territorySector.value = zone.sector || "";
-  form.elements.territorySource.value = zone.sourceVersion || "";
+  form.elements.territoryZoneName.value = zone?.name || "";
+  form.elements.territorySector.value = zone?.sector || "";
+  form.elements.territorySource.value = zone?.sourceVersion || "";
 }
 
 function loadedStudents() {
@@ -446,15 +457,18 @@ function renderTerritory() {
   const counts = territoryStudentsByZone();
   const classified = Object.values(counts).reduce((sum, value) => sum + value, 0);
   const loaded = loadedStudents().length;
+  const neighborhoods = new Set(loadedStudents().map((student) => censoText(student.neighborhood)).filter(Boolean));
   const sourceLabels = [...new Set(zones.map((zone) => zone.sourceVersion).filter(Boolean))];
   ui["territory-summary"].innerHTML = [
     ["Zonas aprovadas", zones.length, zones.length ? "na camada atual" : "aguardando importação"],
-    ["Cadastros classificados", classified, loaded ? `de ${loaded} aluno${loaded === 1 ? "" : "s"} carregado${loaded === 1 ? "" : "s"}` : "nenhum aluno carregado"],
+    ["Cadastros por zona", classified, loaded ? `de ${loaded} aluno${loaded === 1 ? "" : "s"} carregado${loaded === 1 ? "" : "s"}` : "nenhum aluno carregado"],
+    ["Bairros no censo", neighborhoods.size, neighborhoods.size ? "contagem agregada no painel" : "aguardando bairro no cadastro"],
     ["Fonte territorial", sourceLabels.length ? "Validar" : "Pendente", sourceLabels.length ? "verifique versão e licença" : "sem geometria publicada"]
   ].map(([label, value, note]) => `<article class="panel stat-card territory-stat"><div class="stat-label"><span>${escapeHtml(String(label))}</span><i class="stat-icon" aria-hidden="true">⌖</i></div><strong>${escapeHtml(String(value))}</strong><small>${escapeHtml(String(note))}</small></article>`).join("");
   ui["territory-layer-status"].textContent = zones.length ? `${zones.length} zona${zones.length === 1 ? "" : "s"}` : "Sem camada";
   ui["territory-layer-status"].classList.toggle("inactive", !zones.length);
   ui["territory-map"].innerHTML = renderTerritoryMap(zones, counts);
+  mountOfficialTerritoryMap(zones, counts);
   ui["territory-zone-list"].innerHTML = zones.length ? zones.map((zone) => {
     const count = counts[zone.id] || 0;
     const selected = zone.id === state.selectedTerritoryZoneId;
@@ -463,16 +477,99 @@ function renderTerritory() {
 }
 
 function renderTerritoryMap(zones, counts) {
-  const drawable = zones.filter((zone) => geometryPoints(zone.geometry).length);
-  if (!zones.length) return `<div class="territory-map-empty"><span aria-hidden="true">⌖</span><h4>Mapa aguardando camada oficial</h4><p>O modelo GeoJSON está pronto. Nenhum limite de bairro ou setor foi inventado nesta plataforma.</p></div>`;
-  if (!drawable.length) return `<div class="territory-map-empty"><span aria-hidden="true">◫</span><h4>Camada sem geometria desenhável</h4><p>Confira se o GeoJSON usa polígonos em latitude e longitude (EPSG:4326).</p></div>`;
-  const bounds = geometryBounds(drawable.map((zone) => zone.geometry));
-  const paths = drawable.map((zone, index) => {
-    const selected = zone.id === state.selectedTerritoryZoneId;
-    const count = counts[zone.id] || 0;
-    return `<path class="territory-shape ${selected ? "selected" : ""}" data-action="select-territory-zone" data-id="${escapeAttr(zone.id)}" data-count="${count}" style="--zone-index:${index}" d="${geoPath(zone.geometry, bounds)}" tabindex="0" role="button" aria-label="Selecionar ${escapeAttr(zone.name || "zona")}, ${count} cadastro${count === 1 ? "" : "s"} carregado${count === 1 ? "" : "s"}"><title>${escapeHtml(`${zone.name || "Zona"} · ${count} cadastro${count === 1 ? "" : "s"}`)}</title></path>`;
-  }).join("");
-  return `<svg class="territory-svg" viewBox="0 0 1000 620" preserveAspectRatio="xMidYMid meet" aria-label="Mapa de zonas com ${drawable.length} polígonos"><rect class="territory-map-background" width="1000" height="620" rx="28"></rect><path class="territory-contour" d="M-40 510C180 390 290 600 492 440S811 220 1050 300"/><path class="territory-contour" d="M-20 170C170 280 298 120 465 205s348 168 568-28"/>${paths}</svg>`;
+  const usingGoogle = Boolean(window.GOOGLE_MAPS_CONFIG?.apiKey);
+  return `<div id="official-territory-map" class="official-territory-map" aria-label="Mapa de Votorantim com limite municipal oficial do IBGE"></div><p class="territory-map-credit">Limite municipal: IBGE, Malha Municipal 2024 · Base cartográfica: ${usingGoogle ? "Google Maps Platform" : "© OpenStreetMap contributors"} · Sem pinos ou endereços de participantes.</p>`;
+}
+
+async function mountOfficialTerritoryMap(zones, counts) {
+  const target = document.getElementById("official-territory-map");
+  if (!target) return;
+  state.territoryMap?.remove();
+  state.territoryMap = null;
+  state.googleTerritoryMap = null;
+  target.replaceChildren();
+  try {
+    const response = await fetch("data/votorantim-limite-municipal-ibge-2024.geojson", { cache: "force-cache" });
+    if (!response.ok) throw new Error("Limite municipal indisponível");
+    const boundary = await response.json();
+    if (window.GOOGLE_MAPS_CONFIG?.apiKey) {
+      try {
+        await loadGoogleMaps(window.GOOGLE_MAPS_CONFIG);
+        mountGoogleTerritoryMap(target, boundary, zones, counts);
+        return;
+      } catch (error) {
+        console.warn("Google Maps indisponível; usando mapa alternativo", error);
+      }
+    }
+    if (!window.L) throw new Error("Biblioteca do mapa indisponível");
+    const map = window.L.map(target, { zoomControl: true, scrollWheelZoom: false, attributionControl: true });
+    state.territoryMap = map;
+    window.L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", { maxZoom: 19, attribution: "© OpenStreetMap contributors" }).addTo(map);
+    const boundaryLayer = window.L.geoJSON(boundary, {
+      style: { color: "#063b79", weight: 3, fillColor: "#2f94bf", fillOpacity: 0.07 },
+      onEachFeature: (_, layer) => layer.bindTooltip("Votorantim — limite municipal IBGE 2024", { sticky: true })
+    }).addTo(map);
+    map.fitBounds(boundaryLayer.getBounds(), { padding: [16, 16] });
+    zones.filter((zone) => geometryPoints(zone.geometry).length).forEach((zone) => {
+      const total = counts[zone.id] || 0;
+      const selected = zone.id === state.selectedTerritoryZoneId;
+      const layer = window.L.geoJSON({ type: "Feature", properties: {}, geometry: zone.geometry }, {
+        style: { color: selected ? "#9e1f2a" : "#1268b2", weight: selected ? 3 : 2, fillColor: selected ? "#c62d37" : "#2f94bf", fillOpacity: selected ? 0.38 : 0.22 }
+      }).addTo(map);
+      layer.bindTooltip(`${zone.name || "Zona"} · ${total} cadastro${total === 1 ? "" : "s"}`, { sticky: true });
+      layer.on("click", () => { state.selectedTerritoryZoneId = zone.id; renderTerritory(); });
+    });
+  } catch (error) {
+    console.error("Falha ao carregar a malha oficial", error);
+    target.innerHTML = `<div class="territory-map-empty"><span aria-hidden="true">!</span><h4>Mapa oficial indisponível</h4><p>Verifique a publicação do arquivo territorial e tente novamente.</p></div>`;
+  }
+}
+
+function loadGoogleMaps(config) {
+  if (window.google?.maps) return Promise.resolve(window.google.maps);
+  const existing = document.querySelector('script[data-google-maps-platform]');
+  if (existing) return new Promise((resolve, reject) => {
+    existing.addEventListener("load", () => resolve(window.google?.maps), { once: true });
+    existing.addEventListener("error", () => reject(new Error("Não foi possível carregar o Google Maps")), { once: true });
+  });
+  return new Promise((resolve, reject) => {
+    const script = document.createElement("script");
+    script.dataset.googleMapsPlatform = "true";
+    script.src = `https://maps.googleapis.com/maps/api/js?key=${encodeURIComponent(config.apiKey)}&v=weekly&language=pt-BR&region=BR`;
+    script.async = true;
+    script.onload = () => window.google?.maps ? resolve(window.google.maps) : reject(new Error("Google Maps não foi inicializado"));
+    script.onerror = () => reject(new Error("Não foi possível carregar o Google Maps"));
+    document.head.append(script);
+  });
+}
+
+function mountGoogleTerritoryMap(target, boundary, zones, counts) {
+  const maps = window.google.maps;
+  const map = new maps.Map(target, {
+    center: { lat: -23.544, lng: -47.452 }, zoom: 12,
+    mapId: window.GOOGLE_MAPS_CONFIG?.mapId || undefined,
+    streetViewControl: false, fullscreenControl: true, mapTypeControl: true
+  });
+  state.googleTerritoryMap = map;
+  const features = [{ type: "Feature", properties: { appLayer: "municipal" }, geometry: boundary.features?.[0]?.geometry }, ...zones.filter((zone) => geometryPoints(zone.geometry).length).map((zone) => ({ type: "Feature", properties: { appLayer: "zone", zoneId: zone.id, zoneName: zone.name || "Zona", total: counts[zone.id] || 0 }, geometry: zone.geometry }))].filter((feature) => feature.geometry);
+  map.data.addGeoJson({ type: "FeatureCollection", features });
+  map.data.setStyle((feature) => {
+    if (feature.getProperty("appLayer") === "municipal") return { strokeColor: "#063b79", strokeWeight: 3, fillColor: "#2f94bf", fillOpacity: 0.07, clickable: false };
+    const selected = feature.getProperty("zoneId") === state.selectedTerritoryZoneId;
+    return { strokeColor: selected ? "#9e1f2a" : "#1268b2", strokeWeight: selected ? 3 : 2, fillColor: selected ? "#c62d37" : "#2f94bf", fillOpacity: selected ? 0.38 : 0.22 };
+  });
+  map.data.addListener("click", (event) => {
+    const zoneId = event.feature.getProperty("zoneId");
+    if (!zoneId) return;
+    state.selectedTerritoryZoneId = zoneId;
+    renderTerritory();
+  });
+  const points = geometryPoints(boundary.features?.[0]?.geometry);
+  if (points.length) {
+    const bounds = new maps.LatLngBounds();
+    points.forEach(([longitude, latitude]) => bounds.extend({ lat: Number(latitude), lng: Number(longitude) }));
+    map.fitBounds(bounds, 18);
+  }
 }
 
 function geometryCoordinates(geometry) {
@@ -516,6 +613,21 @@ function afterClassesChanged() {
   renderAdmin();
   renderTerritory();
   if (state.attendance.classId) renderAttendance();
+  hydrateCensusStudents();
+}
+
+async function hydrateCensusStudents() {
+  const requestId = ++state.censusHydrationId;
+  const classIds = new Set(state.classes.map((item) => item.id));
+  Object.keys(state.studentsByClass).forEach((id) => { if (!classIds.has(id)) delete state.studentsByClass[id]; });
+  try {
+    await Promise.all(state.classes.filter((item) => item.id !== state.selectedClassId).map((item) => loadStudents(item.id)));
+    if (requestId !== state.censusHydrationId) return;
+    renderDashboard();
+    renderTerritory();
+  } catch (error) {
+    console.error("Falha ao atualizar indicadores do censo", error);
+  }
 }
 
 function stopSubscriptions() {
@@ -614,6 +726,7 @@ function refreshClassSelectors() {
   if (state.attendance.classId && state.classes.some((item) => item.id === state.attendance.classId)) {
     ui["attendance-class"].value = state.attendance.classId;
   }
+  updateImportReadiness();
 }
 
 function updateProfileUi() {
@@ -672,6 +785,8 @@ function renderDashboard() {
   const marked = histories.reduce((sum, entry) => sum + Number(entry.markedCount || countMarked(entry.records)), 0);
   const present = histories.reduce((sum, entry) => sum + Number(entry.presentCount || countPresent(entry.records)), 0);
   const rate = marked ? Math.round((present / marked) * 100) : 0;
+  const latestAttendance = Object.values(state.histories).flat().sort((a, b) => `${b.date || ""}T${b.sessionTime || "00:00"}`.localeCompare(`${a.date || ""}T${a.sessionTime || "00:00"}`))[0];
+  const latestPresent = latestAttendance ? Number(latestAttendance.presentCount || countPresent(latestAttendance.records)) : 0;
 
   const seen = new Set();
   Object.values(state.studentsByClass).flat().forEach((student) => {
@@ -689,7 +804,8 @@ function renderDashboard() {
     ["Atividades", sports, "modalidades das turmas", "◆"],
     ["Locais", locations, "polos das turmas", "⌖"],
     ["Chamadas no mês", histories.length, "registros já salvos", "✓"],
-    ["Presença no mês", marked ? `${rate}%` : "—", marked ? `${present} presença${present === 1 ? "" : "s"} marcada${present === 1 ? "" : "s"}` : "aguardando primeira chamada", "↗"]
+    ["Presença no mês", marked ? `${rate}%` : "—", marked ? `${present} presença${present === 1 ? "" : "s"} marcada${present === 1 ? "" : "s"}` : "aguardando primeira chamada", "↗"],
+    ["Na última chamada", latestAttendance ? latestPresent : "—", latestAttendance ? `${formatDate(latestAttendance.date)}${latestAttendance.sessionTime ? ` às ${latestAttendance.sessionTime}` : ""}` : "aguardando primeira chamada", "◉"]
   ].map(([label, value, note, icon]) => `<article class="panel stat-card"><div class="stat-label"><span>${label}</span><i class="stat-icon" aria-hidden="true">${icon}</i></div><strong>${value}</strong><small>${note}</small></article>`).join("");
 
   if (!state.classes.length) {
@@ -762,13 +878,13 @@ function renderClassDetail(classItem) {
   const history = state.histories[classItem.id] || [];
   const studentContent = students.length
     ? `<div class="student-table-wrap"><table class="student-table"><thead><tr><th>Aluno</th><th>Matrícula</th><th>Responsável</th><th>Território</th><th>Situação</th><th>Contato</th><th aria-label="Ações"></th></tr></thead><tbody>${students.map((student) => `
-      <tr><td><div class="student-name"><span class="student-initial">${initials(student.preferredName || student.fullName)}</span><span>${escapeHtml(student.preferredName || student.fullName || "Sem nome")}</span></div></td><td>${escapeHtml(student.enrollmentCode || "—")}</td><td>${escapeHtml(student.guardianName || "—")}</td><td>${renderTerritoryPill(student)}</td><td><span class="pill">${escapeHtml(student.enrollmentStatus || "Ativa")}</span></td><td>${renderContactActions(student, classItem.id)}</td><td><div class="row-actions"><button class="row-action" data-action="edit-student" data-id="${escapeAttr(student.id)}" data-class-id="${escapeAttr(classItem.id)}" type="button">Editar</button><button class="row-action danger" data-action="delete-student" data-id="${escapeAttr(student.id)}" data-class-id="${escapeAttr(classItem.id)}" type="button">Excluir</button></div></td></tr>`).join("")}</tbody></table></div>`
+      <tr><td><div class="student-name"><span class="student-initial">${initials(student.preferredName || student.fullName)}</span><span>${escapeHtml(student.preferredName || student.fullName || "Sem nome")}</span></div></td><td>${escapeHtml(student.enrollmentCode || "—")}</td><td>${escapeHtml(student.guardianName || "—")}</td><td>${renderTerritoryPill(student)}</td><td><span class="pill">${escapeHtml(student.enrollmentStatus || "Ativa")}</span></td><td>${renderContactActions(student, classItem.id)}</td><td><div class="row-actions"><button class="row-action" data-action="edit-student" data-id="${escapeAttr(student.id)}" data-class-id="${escapeAttr(classItem.id)}" type="button">Editar</button>${state.isAdmin ? `<button class="row-action danger" data-action="delete-student" data-id="${escapeAttr(student.id)}" data-class-id="${escapeAttr(classItem.id)}" type="button">Excluir</button>` : ""}</div></td></tr>`).join("")}</tbody></table></div>`
     : `<div class="empty-state"><span aria-hidden="true">+</span><h3>Lista vazia, por enquanto</h3><p>Cadastre um aluno por vez ou importe uma planilha CSV revisada.</p><button class="button button-secondary" data-action="open-student-dialog" data-class-id="${escapeAttr(classItem.id)}" type="button">Cadastrar aluno</button></div>`;
   const historyContent = history.length ? `<div class="history-list">${history.map((entry) => {
     const marked = Number(entry.markedCount || countMarked(entry.records));
     const present = Number(entry.presentCount || countPresent(entry.records));
     const rate = marked ? Math.round((present / marked) * 100) : 0;
-    return `<div class="history-row"><div><strong>${formatDate(entry.date)}</strong><small>${marked} marcação${marked === 1 ? "" : "ões"}</small></div><span class="pill">${present} presença${present === 1 ? "" : "s"}</span><span class="history-rate">${marked ? `${rate}%` : "—"}</span></div>`;
+    return `<div class="history-row"><div><strong>${formatDate(entry.date)}${entry.sessionTime ? ` · ${escapeHtml(entry.sessionTime)}` : ""}</strong><small>${marked} marcação${marked === 1 ? "" : "ões"}</small></div><span class="pill">${present} presença${present === 1 ? "" : "s"}</span><span class="history-rate">${marked ? `${rate}%` : "—"}</span></div>`;
   }).join("")}</div>` : `<div class="empty-state"><span aria-hidden="true">✓</span><h3>Ainda não há histórico</h3><p>A primeira chamada salva aparecerá aqui, com data e percentual de presença.</p><button class="button button-secondary" data-action="open-attendance" data-id="${escapeAttr(classItem.id)}" type="button">Fazer chamada</button></div>`;
   const content = state.classDetailTab === "history" ? historyContent : studentContent;
   const countText = students.length ? `${students.length} aluno${students.length === 1 ? "" : "s"} carregado${students.length === 1 ? "" : "s"}` : "Sem alunos cadastrados";
@@ -790,6 +906,7 @@ async function ensureAttendanceReady() {
 async function onAttendanceFilterChange() {
   state.attendance.classId = ui["attendance-class"].value;
   state.attendance.date = ui["attendance-date"].value || localDate();
+  state.attendance.sessionTime = ui["attendance-time"].value || localTime();
   state.attendance.dirty = false;
   if (state.attendance.classId) {
     selectClass(state.attendance.classId);
@@ -812,7 +929,7 @@ async function loadAttendance() {
       const snapshot = await getDoc(doc(firebase.db, "classes", classId, "attendance", date));
       entry = snapshot.exists() ? { id: snapshot.id, ...snapshot.data() } : null;
     }
-    state.attendance = { classId, date, records: structuredClone(entry?.records || {}), dirty: false };
+    state.attendance = { classId, date, sessionTime: entry?.sessionTime || state.attendance.sessionTime || localTime(), records: structuredClone(entry?.records || {}), dirty: false };
     renderAttendance();
   } catch (error) {
     toast(friendlyFirebaseError(error), "error");
@@ -823,6 +940,7 @@ function renderAttendance() {
   const { classId, records } = state.attendance;
   const students = state.studentsByClass[classId] || [];
   ui["attendance-date"].value = state.attendance.date || localDate();
+  ui["attendance-time"].value = state.attendance.sessionTime || localTime();
   if (classId) ui["attendance-class"].value = classId;
   const marked = countMarked(records);
   ui["attendance-marked"].textContent = `${marked} / ${students.length}`;
@@ -843,7 +961,9 @@ function renderAttendance() {
     ui["attendance-list"].innerHTML = `<div class="empty-state"><span aria-hidden="true">✓</span><h3>Escolha uma turma</h3><p>A lista de alunos será mostrada aqui.</p></div>`;
     return;
   }
-  ui["attendance-helper"].textContent = students.length ? "Use P para presença e F para falta. Notas são opcionais." : "Esta turma ainda não tem alunos cadastrados.";
+  const present = countPresent(records);
+  const moment = state.attendance.sessionTime || "horário não informado";
+  ui["attendance-helper"].textContent = students.length ? `Nesta chamada de ${formatDate(state.attendance.date)} às ${moment}, ${present} pessoa${present === 1 ? "" : "s"} ${present === 1 ? "está" : "estão"} presente${present === 1 ? "" : "s"}. Use P para presença e F para falta.` : "Esta turma ainda não tem alunos cadastrados.";
   ui["attendance-list"].innerHTML = students.length ? students.map((student) => {
     const record = records[student.id] || {};
     const status = record.status || "";
@@ -880,7 +1000,7 @@ function clearAttendance() {
 }
 
 async function saveAttendance() {
-  const { classId, date } = state.attendance;
+  const { classId, date, sessionTime } = state.attendance;
   const classItem = state.classes.find((item) => item.id === classId);
   const students = state.studentsByClass[classId] || [];
   if (!classItem || !students.length) return;
@@ -892,6 +1012,7 @@ async function saveAttendance() {
   const records = cleanAttendanceRecords(state.attendance.records);
   const entry = {
     date,
+    sessionTime: sessionTime || localTime(),
     classId,
     className: classItem.name || "",
     teacherId: classItem.teacherId || state.user.uid,
@@ -1039,8 +1160,8 @@ async function saveStudent(event) {
   syncTerritoryFields(form);
   Object.assign(values, formValues(form));
   values.state = values.state.toUpperCase();
-  if (values.birthDate && !ageAtEndOf2026(values.birthDate)) {
-    setFormMessage("student-form-message", "Confira a data de nascimento: informe uma data válida até 2026.");
+  if (values.birthDate && !ageExactToday(values.birthDate)) {
+    setFormMessage("student-form-message", "Confira a data de nascimento: informe uma data válida que não esteja no futuro.");
     return;
   }
   values.guardianPhone = formatPhone(values.guardianPhone || "");
@@ -1070,11 +1191,14 @@ async function deleteClassAsAdmin(classId) {
   const item = state.classes.find((entry) => entry.id === classId);
   if (!item) return;
   const name = item.name || "Turma sem nome";
-  const first = window.confirm(`EXCLUSÃO DEFINITIVA\n\nTurma: ${name}\n\nEsta ação apagará a turma, seus cadastros de alunos e as chamadas vinculadas. Não pode ser desfeita.\n\nFaça backup antes de prosseguir. Continuar?`);
+  const first = window.confirm(`EXCLUSÃO DEFINITIVA\n\nTurma: ${name}\n\nEsta ação apagará a turma, seus cadastros de alunos e as chamadas vinculadas. Não pode ser desfeita.\n\nA exclusão só deve ocorrer após backup externo validado. Continuar?`);
   if (!first) return;
-  const typed = window.prompt(`Para confirmar a exclusão da turma e seus dados, digite exatamente:\n${name}`);
-  if (typed !== name) { toast("Exclusão cancelada: confirmação não corresponde."); return; }
+  const backupReference = window.prompt("Informe a referência do backup externo validado (data, exportação ou protocolo):");
+  if (!backupReference || backupReference.trim().length < 8) { toast("Exclusão cancelada: referência de backup não informada.", "error"); return; }
+  const typed = window.prompt(`Para confirmar a exclusão da turma e seus dados, digite exatamente:\nEXCLUIR ${name}`);
+  if (typed !== `EXCLUIR ${name}`) { toast("Exclusão cancelada: confirmação não corresponde."); return; }
   try {
+    await repository.createDeletionAudit({ action: "delete_class", classId, className: name, backupReference: backupReference.trim() });
     await repository.deleteClassAsAdmin(classId);
     state.selectedClassId = null;
     delete state.studentsByClass[classId];
@@ -1085,11 +1209,16 @@ async function deleteClassAsAdmin(classId) {
 }
 
 async function deleteStudent(classId, studentId) {
+  if (!state.isAdmin) { toast("A exclusão de cadastros é exclusiva da administração.", "error"); return; }
   const student = (state.studentsByClass[classId] || []).find((row) => row.id === studentId);
   if (!student) return;
-  const confirmed = window.confirm(`Excluir o cadastro de ${student.preferredName || student.fullName || "este aluno"}? As chamadas já gravadas não serão apagadas.`);
+  const studentName = student.preferredName || student.fullName || "este aluno";
+  const confirmed = window.confirm(`Excluir definitivamente o cadastro de ${studentName}? As chamadas já gravadas não serão apagadas.`);
   if (!confirmed) return;
+  const typed = window.prompt(`Para confirmar, digite exatamente:\nEXCLUIR ${studentName}`);
+  if (typed !== `EXCLUIR ${studentName}`) { toast("Exclusão cancelada: confirmação não corresponde."); return; }
   try {
+    await repository.createDeletionAudit({ action: "delete_student", classId, studentId, studentName, backupReference: "Cadastro removido sem exclusão do histórico de chamadas" });
     await repository.deleteStudent(classId, studentId);
     toast("Cadastro removido. O histórico de chamada foi preservado.");
     if (state.isDemo || state.selectedClassId !== classId) await loadStudents(classId);
@@ -1371,31 +1500,47 @@ async function handleCsvFile(event) {
     const text = await file.text();
     const rows = parseCsv(text);
     const normalized = normalizeCsvRows(rows);
-    if (!normalized.length) throw new Error("Não encontramos linhas válidas com nome_completo.");
+    if (!normalized.length) throw new Error("Não encontramos linhas válidas com a coluna nome preenchida.");
     if (normalized.length > 400) throw new Error("Importe no máximo 400 alunos por arquivo para revisar com segurança.");
     state.importRows = normalized;
-    ui["confirm-import"].disabled = false;
-    ui["import-summary"].textContent = `${normalized.length} aluno${normalized.length === 1 ? "" : "s"} pronto${normalized.length === 1 ? "" : "s"} para revisão e importação.`;
+    updateImportReadiness();
     renderImportPreview();
   } catch (error) {
     state.importRows = [];
-    ui["confirm-import"].disabled = true;
+    updateImportReadiness();
     ui["import-summary"].textContent = error.message || "Não foi possível ler o arquivo.";
     ui["import-preview"].classList.add("hidden");
     toast(error.message || "Arquivo inválido.", "error");
   }
 }
 
+function updateImportReadiness() {
+  const classId = ui["import-class"]?.value;
+  const reviewed = Boolean(ui["import-reviewed"]?.checked);
+  const rows = state.importRows.length;
+  const messages = !classId
+    ? "Escolha primeiro a turma de destino."
+    : !rows
+      ? "Carregue um CSV para revisar as linhas antes de importar."
+      : !reviewed
+        ? `${rows} linha${rows === 1 ? "" : "s"} lida${rows === 1 ? "" : "s"}. Marque que a revisão foi concluída para liberar a importação.`
+        : `${rows} cadastro${rows === 1 ? "" : "s"} revisado${rows === 1 ? "" : "s"}, pronto${rows === 1 ? "" : "s"} para importar nesta turma.`;
+  ui["confirm-import"].disabled = !(classId && rows && reviewed);
+  if (ui["import-summary"]) ui["import-summary"].textContent = messages;
+}
+
 function renderImportPreview() {
   const preview = state.importRows.slice(0, 5);
   ui["import-preview"].classList.remove("hidden");
-  ui["import-preview"].innerHTML = `<h3>Prévia de importação</h3><p>Mostrando ${preview.length} de ${state.importRows.length} linha${state.importRows.length === 1 ? "" : "s"}. Confira antes de salvar.</p><table class="preview-table"><thead><tr><th>Nome</th><th>Matrícula</th><th>Responsável</th><th>Canal autorizado</th><th>Território</th><th>Escola</th></tr></thead><tbody>${preview.map((row) => `<tr><td>${escapeHtml(row.fullName)}</td><td>${escapeHtml(row.enrollmentCode || "—")}</td><td>${escapeHtml(row.guardianName || "—")}</td><td>${escapeHtml(contactPermissionLabel(row.contactPermission))}</td><td>${escapeHtml(row.territoryZoneName || row.territorySector || "—")}</td><td>${escapeHtml(row.school || "—")}</td></tr>`).join("")}</tbody></table>`;
+  const duplicates = state.importRows.length - new Set(state.importRows.map((row) => `${censoKey(row.fullName)}|${row.birthDate || ""}`)).size;
+  ui["import-preview"].innerHTML = `<h3>Prévia de importação</h3><p>Mostrando ${preview.length} de ${state.importRows.length} linha${state.importRows.length === 1 ? "" : "s"}. Confira antes de salvar.${duplicates ? ` Atenção: há ${duplicates} possível${duplicates === 1 ? "" : "is"} duplicidade${duplicates === 1 ? "" : "s"} no próprio arquivo.` : ""}</p><table class="preview-table"><thead><tr><th>Nome</th><th>Nascimento</th><th>Bairro</th><th>Responsável</th><th>Telefone</th><th>Cadastro</th></tr></thead><tbody>${preview.map((row) => `<tr><td>${escapeHtml(row.fullName)}</td><td>${escapeHtml(row.birthDate || "—")}</td><td>${escapeHtml(row.neighborhood || "Bairro não informado")}</td><td>${escapeHtml(row.guardianName || "—")}</td><td>${escapeHtml(row.phone || row.guardianPhone || "—")}</td><td>${escapeHtml(row.registrationDate || "—")}</td></tr>`).join("")}</tbody></table>`;
 }
 
 async function importStudents() {
   const classId = ui["import-class"].value;
-  if (!classId || !state.importRows.length) {
-    toast("Selecione uma turma e carregue uma planilha válida.", "error");
+  if (!classId || !state.importRows.length || !ui["import-reviewed"].checked) {
+    updateImportReadiness();
+    toast("Escolha a turma, carregue o CSV e confirme que revisou a importação.", "error");
     return;
   }
   const button = ui["confirm-import"];
@@ -1407,16 +1552,22 @@ async function importStudents() {
     state.importRows = [];
     ui["import-file"].value = "";
     $("small", ui["import-file"].parentElement).textContent = "Nenhum arquivo selecionado";
+    ui["import-reviewed"].checked = false;
     ui["import-summary"].textContent = "Importação concluída. Carregue outro arquivo se necessário.";
     ui["import-preview"].classList.add("hidden");
     if (state.isDemo || state.selectedClassId !== classId) await loadStudents(classId);
     renderClasses();
     renderAttendance();
   } catch (error) {
-    toast(friendlyFirebaseError(error), "error");
+    if (["permission-denied", "firestore/permission-denied"].includes(error?.code)) {
+      ui["import-summary"].textContent = "O Firebase recusou esta importação. Confirme que esta turma pertence à sua conta ou que a conta administradora e as regras publicadas estão corretas.";
+      toast("Importação recusada pelo Firebase. Consulte a gestão da turma e as regras de acesso.", "error");
+    } else {
+      toast(friendlyFirebaseError(error), "error");
+    }
   } finally {
     button.textContent = "Importar alunos revisados";
-    button.disabled = !state.importRows.length;
+    updateImportReadiness();
   }
 }
 
@@ -1424,7 +1575,7 @@ function renderAdmin() {
   if (!state.isAdmin || !ui["admin-content"]) return;
   const teachers = new Set(state.classes.map((item) => item.teacherId).filter(Boolean));
   const active = state.classes.filter((item) => item.active !== false).length;
-  ui["admin-content"].innerHTML = `<div class="admin-stats"><article class="panel stat-card"><div class="stat-label"><span>Turmas no acesso</span><i class="stat-icon">◒</i></div><strong>${state.classes.length}</strong><small>todas as turmas autorizadas</small></article><article class="panel stat-card"><div class="stat-label"><span>Turmas ativas</span><i class="stat-icon">✓</i></div><strong>${active}</strong><small>disponíveis para chamada</small></article><article class="panel stat-card"><div class="stat-label"><span>Professores</span><i class="stat-icon">◉</i></div><strong>${teachers.size}</strong><small>identificados pelas turmas</small></article></div><article class="panel admin-note"><strong>Acesso administrativo é provisionado fora da interface.</strong> Para manter a segurança, esta tela não cria administradores. Siga o guia Firebase para cadastrar o UID autorizado em <code>adminUsers</code> usando o Console ou Admin SDK.</article><article class="panel" style="margin-top:16px;padding:20px;overflow:auto"><h3 style="margin-bottom:14px">Turmas acessíveis</h3><table class="admin-table"><thead><tr><th>Turma</th><th>Modalidade</th><th>Professor responsável</th><th>Local</th><th>Status</th></tr></thead><tbody>${state.classes.length ? state.classes.map((item) => `<tr><td>${escapeHtml(item.name || "Turma sem nome")}</td><td>${escapeHtml(item.sport || "—")}</td><td>${escapeHtml(item.teacherName || "—")}</td><td>${escapeHtml(item.location || "—")}</td><td>${item.active === false ? "Inativa" : "Ativa"}</td></tr>`).join("") : "<tr><td colspan=\"5\">Nenhuma turma disponível.</td></tr>"}</tbody></table></article>`;
+  ui["admin-content"].innerHTML = `<div class="admin-stats"><article class="panel stat-card"><div class="stat-label"><span>Turmas no acesso</span><i class="stat-icon">◒</i></div><strong>${state.classes.length}</strong><small>todas as turmas autorizadas</small></article><article class="panel stat-card"><div class="stat-label"><span>Turmas ativas</span><i class="stat-icon">✓</i></div><strong>${active}</strong><small>disponíveis para chamada</small></article><article class="panel stat-card"><div class="stat-label"><span>Professores</span><i class="stat-icon">◉</i></div><strong>${teachers.size}</strong><small>identificados pelas turmas</small></article></div><article class="panel admin-note"><strong>Gestão segura de acesso.</strong> Esta tela não cria administradores. A conta deve ser provisionada fora do navegador e as regras do Firestore publicadas antes da operação real.</article><article class="panel" style="margin-top:16px;padding:20px;overflow:auto"><div class="panel-heading"><div><p class="eyebrow">IMPORTAÇÃO E TURMAS</p><h3>Gestão operacional</h3></div><button class="button button-secondary button-compact" data-action="open-import" type="button">Abrir importação</button></div><p class="muted">Use “Importar nesta turma” para já selecionar o destino. A confirmação de revisão continua obrigatória antes de gravar.</p><table class="admin-table"><thead><tr><th>Turma</th><th>Modalidade</th><th>Professor responsável</th><th>Alunos carregados</th><th>Status</th><th></th></tr></thead><tbody>${state.classes.length ? state.classes.map((item) => `<tr><td>${escapeHtml(item.name || "Turma sem nome")}</td><td>${escapeHtml(item.sport || "—")}</td><td>${escapeHtml(item.teacherName || "—")}</td><td>${(state.studentsByClass[item.id] || []).length}</td><td>${item.active === false ? "Inativa" : "Ativa"}</td><td><button class="row-action" data-action="open-import-for-class" data-id="${escapeAttr(item.id)}" type="button">Importar nesta turma</button></td></tr>`).join("") : "<tr><td colspan=\"6\">Nenhuma turma disponível.</td></tr>"}</tbody></table></article>`;
 }
 
 function renderHelp() {
@@ -1480,6 +1631,12 @@ function handleDynamicClick(event) {
   if (action === "edit-class") openClassDialog(id);
   if (action === "delete-class-admin") deleteClassAsAdmin(id);
   if (action === "open-attendance") openAttendanceFor(id);
+  if (action === "open-import") setActiveView("import");
+  if (action === "open-import-for-class") {
+    ui["import-class"].value = id;
+    setActiveView("import");
+    updateImportReadiness();
+  }
   if (action === "open-student-dialog") openStudentDialog(classId);
   if (action === "edit-student") openStudentDialog(classId, id);
   if (action === "delete-student") deleteStudent(classId, id);
@@ -1505,6 +1662,31 @@ function handleDynamicInput(event) {
   if (event.target.name === "postalCode") event.target.value = formatPostalCode(event.target.value);
   if (["guardianPhone", "studentPhone", "phone"].includes(event.target.name)) event.target.value = formatPhone(event.target.value);
   if (event.target.name === "territoryZoneId") syncTerritoryFields(ui["student-form"]);
+}
+
+async function lookupPostalCode() {
+  const form = ui["student-form"];
+  const postalCode = String(form.elements.postalCode?.value || "").replace(/\D/g, "");
+  const helper = ui["postal-code-help"];
+  if (postalCode.length !== 8) {
+    helper.textContent = "Informe os 8 dígitos do CEP para receber uma sugestão de bairro.";
+    return;
+  }
+  helper.textContent = "Consultando o CEP…";
+  try {
+    const response = await fetch(`https://viacep.com.br/ws/${postalCode}/json/`);
+    if (!response.ok) throw new Error("Consulta indisponível");
+    const result = await response.json();
+    if (result.erro) throw new Error("CEP não encontrado");
+    const suggestions = { street: result.logradouro, neighborhood: result.bairro, city: result.localidade, state: result.uf };
+    Object.entries(suggestions).forEach(([key, value]) => {
+      if (value && form.elements[key] && !String(form.elements[key].value || "").trim()) form.elements[key].value = value;
+    });
+    form.elements.postalCode.value = formatPostalCode(postalCode);
+    helper.textContent = result.bairro ? `Bairro sugerido: ${result.bairro}. Confira com a referência territorial antes de salvar.` : "CEP localizado, sem bairro informado pela fonte.";
+  } catch (error) {
+    helper.textContent = "Não foi possível consultar este CEP. Informe o bairro manualmente.";
+  }
 }
 
 function requireProfile() {
@@ -1659,6 +1841,17 @@ const repository = {
     }
     await deleteDoc(doc(firebase.db, "classes", classId, "students", studentId));
   },
+  async createDeletionAudit(entry) {
+    const payload = { ...entry, actorUid: state.user.uid, actorEmail: state.user.email || "", appVersion: APP_VERSION };
+    if (state.isDemo) {
+      const data = demoData();
+      data.deletionAudit ||= {};
+      data.deletionAudit[createId()] = { ...payload, createdAt: new Date().toISOString() };
+      writeDemoData(data);
+      return;
+    }
+    await addDoc(collection(firebase.db, "deletionAudit"), { ...payload, createdAt: serverTimestamp() });
+  },
   async importTerritoryZones(zones) {
     if (!state.isAdmin) throw new Error("A importação de zonas é restrita à gestão autorizada.");
     if (state.isDemo) {
@@ -1729,7 +1922,7 @@ function demoData() {
   } catch (error) {
     console.warn("Local demo storage unavailable", error);
   }
-  return { profile: null, classes: {}, students: {}, territoryZones: {}, attendance: {} };
+  return { profile: null, classes: {}, students: {}, territoryZones: {}, attendance: {}, deletionAudit: {} };
 }
 
 function writeDemoData(data) {
@@ -1906,6 +2099,8 @@ function normalizeCsvRows(rows) {
       normalized.pcdStatus = ["sim", "s"].includes(pcd) ? "Sim" : ["nao", "n"].includes(pcd) ? "Não" : "";
     }
     normalized.postalCode = formatPostalCode(normalized.postalCode || "");
+    normalized.birthDate = normalizeImportDate(normalized.birthDate || "");
+    normalized.registrationDate = normalizeImportDate(normalized.registrationDate || "");
     normalized.guardianPhone = formatPhone(normalized.guardianPhone || "");
     normalized.studentPhone = formatPhone(normalized.studentPhone || "");
     normalized.phone = formatPhone(normalized.phone || "");
@@ -1915,6 +2110,18 @@ function normalizeCsvRows(rows) {
     });
     return normalized;
   }).filter((row) => row.fullName);
+}
+
+function normalizeImportDate(value) {
+  const raw = String(value || "").trim();
+  if (!raw) return "";
+  const iso = raw.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  const br = raw.match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
+  const candidate = iso ? raw : br ? `${br[3]}-${br[2]}-${br[1]}` : "";
+  if (!candidate) return "";
+  const [year, month, day] = candidate.split("-").map(Number);
+  const date = new Date(year, month - 1, day, 12);
+  return date.getFullYear() === year && date.getMonth() === month - 1 && date.getDate() === day ? candidate : "";
 }
 
 function detectSeparator(text) {
@@ -1976,6 +2183,12 @@ function localDate() {
   const now = new Date();
   const timezoneOffset = now.getTimezoneOffset() * 60000;
   return new Date(now.getTime() - timezoneOffset).toISOString().slice(0, 10);
+}
+
+function localTime() {
+  const now = new Date();
+  const timezoneOffset = now.getTimezoneOffset() * 60000;
+  return new Date(now.getTime() - timezoneOffset).toISOString().slice(11, 16);
 }
 
 function localMonth() { return localDate().slice(0, 7); }
