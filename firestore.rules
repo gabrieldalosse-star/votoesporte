@@ -125,7 +125,9 @@ service cloud.firestore {
         optionalText(data, 'territorySector', 100) &&
         optionalText(data, 'territorySource', 180) &&
         optionalEnum(data, 'enrollmentStatus', ['', 'Ativa', 'Pendente', 'Inativa']) &&
-        optionalText(data, 'notes', 500) &&\n        optionalEnum(data, 'pcdStatus', ['', 'Sim', 'Não']) &&\n        optionalText(data, 'registrationDate', 10) &&
+        optionalText(data, 'notes', 500) &&
+        optionalEnum(data, 'pcdStatus', ['', 'Sim', 'Não']) &&
+        optionalText(data, 'registrationDate', 10) &&
         (!data.keys().hasAny(['contact']) || validContact(data.contact)) &&
         (!data.keys().hasAny(['census']) || validCensus(data.census)) &&
         (!data.keys().hasAny(['geo']) || validGeo(data.geo));
