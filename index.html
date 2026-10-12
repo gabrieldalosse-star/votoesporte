@@ -315,19 +315,26 @@
     </dialog>
 
     <script>
-      // Fail visibly if Firebase modules or authentication never finish loading.
-      window.setTimeout(function () {
+      // Visible diagnostics if remote ES modules fail or authentication stalls.
+      window.__votoAppError = "";
+      window.addEventListener("error", function(e) {
+        window.__votoAppError = e.message || "Falha ao carregar JavaScript";
+      });
+      window.addEventListener("unhandledrejection", function(e) {
+        window.__votoAppError = String(e.reason && e.reason.message || e.reason || "Falha na conexão");
+      });
+      window.setTimeout(function() {
         var loading = document.getElementById("loading-screen");
         if (!loading || loading.classList.contains("hidden")) return;
         loading.classList.add("hidden");
         var auth = document.getElementById("auth-screen");
         if (auth) auth.classList.remove("hidden");
-        var notice = document.createElement("div");
-        notice.setAttribute("role", "alert");
-        notice.style.cssText = "position:fixed;bottom:16px;left:12px;right:12px;z-index:99999;padding:18px;background:white;color:#172b4d;border-radius:12px;box-shadow:0 4px 22px #0005;font:16px system-ui";
-        notice.innerHTML = '<strong>O aplicativo não concluiu a inicialização.</strong><p>O site abriu, mas o carregamento do sistema ou do Firebase não terminou.</p><button type="button" style="padding:10px 16px;background:#0759ae;color:white;border:0;border-radius:8px">Tentar novamente</button>';
-        notice.querySelector("button").addEventListener("click", function () { location.reload(); });
-        document.body.appendChild(notice);
+        var warning = document.createElement("div");
+        warning.setAttribute("role","alert");
+        warning.style.cssText = "position:fixed;bottom:12px;left:12px;right:12px;z-index:9999;background:#fff;color:#17365c;padding:16px;border-radius:12px;box-shadow:0 3px 14px #0004;font:15px system-ui";
+        var detail = window.__votoAppError || "O Firebase não concluiu a autenticação ou os módulos não carregaram.";
+        warning.textContent = "Erro de inicialização: " + detail + " — Envie uma captura desta mensagem.";
+        document.body.appendChild(warning);
       }, 12000);
     </script>
     <script src="firebase-config.js"></script>
