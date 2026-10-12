@@ -20,7 +20,7 @@ Este pacote contém somente arquivos de código, regras e modelos vazios. Não c
 ## Firestore: faça antes de publicar o site
 
 1. Faça um backup autorizado da base no projeto `vtesporte-d3b9d`.
-2. Revise e publique `firestore.rules` no Firebase Console.
+2. Revise e publique **o arquivo `firestore.rules deste pacote inteiro`** no Firebase Console. Esta revisão mantém a posse da turma pelo `teacherId`, mas aceita o cadastro progressivo quando a ficha recebe novos campos.
 3. Teste com uma conta de professor: criar turma própria, cadastrar um aluno apenas com nome, complementar o bairro e salvar uma chamada.
 4. Só então publique a interface. A nova interface grava o horário da chamada; se as regras antigas continuarem ativas, o Firebase poderá recusar esse registro.
 

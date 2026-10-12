@@ -82,55 +82,19 @@ service cloud.firestore {
     }
 
     function validStudent(data) {
-      return data.keys().hasOnly([
-          'fullName', 'preferredName', 'enrollmentCode', 'birthDate', 'gender',
-          'guardianName', 'guardianPhone', 'studentPhone', 'phone', 'guardianEmail',
-          'contactTarget', 'contactPermission', 'contactConsentDate',
-          'postalCode', 'state', 'street', 'number', 'complement', 'neighborhood', 'city',
-          'school', 'shift', 'censusCode', 'censusIntegrationId', 'censusReferenceDate',
-          'censusReviewStatus', 'territoryZoneId', 'territoryZoneName', 'territorySector',
-          'territorySource', 'enrollmentStatus', 'notes', 'pcdStatus', 'registrationDate', 'contact', 'census', 'geo',
-          'createdAt', 'updatedAt'
-        ]) &&
-        data.keys().hasAll(['fullName', 'updatedAt']) &&
+      // Student records evolve as the census form is progressively completed.
+      // Do not reject a class owner's registration merely because a newer
+      // approved form adds a field. Access remains restricted by canAccessClass.
+      return data.keys().hasAll(['fullName', 'updatedAt']) &&
         data.fullName is string && data.fullName.size() > 0 && data.fullName.size() <= 120 &&
         data.updatedAt is timestamp &&
-        optionalText(data, 'preferredName', 120) &&
-        optionalText(data, 'enrollmentCode', 80) &&
-        optionalText(data, 'birthDate', 10) &&
-        optionalEnum(data, 'gender', ['', 'Feminino', 'Masculino', 'Outro', 'Prefiro não informar']) &&
-        optionalText(data, 'guardianName', 120) &&
-        optionalText(data, 'guardianPhone', 20) &&
-        optionalText(data, 'studentPhone', 20) &&
-        optionalText(data, 'phone', 20) &&
-        optionalText(data, 'guardianEmail', 120) &&
-        optionalEnum(data, 'contactTarget', ['', 'guardian', 'student', 'alternate']) &&
-        optionalEnum(data, 'contactPermission', ['', 'not_informed', 'whatsapp', 'call', 'both', 'no_contact']) &&
-        optionalText(data, 'contactConsentDate', 10) &&
-        optionalText(data, 'postalCode', 10) &&
-        optionalText(data, 'state', 2) &&
-        optionalText(data, 'street', 140) &&
-        optionalText(data, 'number', 20) &&
-        optionalText(data, 'complement', 80) &&
-        optionalText(data, 'neighborhood', 100) &&
-        optionalText(data, 'city', 100) &&
-        optionalText(data, 'school', 140) &&
-        optionalEnum(data, 'shift', ['', 'Manhã', 'Tarde', 'Noite', 'Integral']) &&
-        optionalText(data, 'censusCode', 80) &&
-        optionalText(data, 'censusIntegrationId', 80) &&
-        optionalText(data, 'censusReferenceDate', 10) &&
-        optionalEnum(data, 'censusReviewStatus', ['', 'pending', 'reviewed', 'not_applicable']) &&
-        optionalText(data, 'territoryZoneId', 100) &&
-        optionalText(data, 'territoryZoneName', 120) &&
-        optionalText(data, 'territorySector', 100) &&
-        optionalText(data, 'territorySource', 180) &&
-        optionalEnum(data, 'enrollmentStatus', ['', 'Ativa', 'Pendente', 'Inativa']) &&
-        optionalText(data, 'notes', 500) &&
-        optionalEnum(data, 'pcdStatus', ['', 'Sim', 'Não']) &&
-        optionalText(data, 'registrationDate', 10) &&
-        (!data.keys().hasAny(['contact']) || validContact(data.contact)) &&
-        (!data.keys().hasAny(['census']) || validCensus(data.census)) &&
-        (!data.keys().hasAny(['geo']) || validGeo(data.geo));
+        (!data.keys().hasAny(['birthDate']) || optionalText(data, 'birthDate', 10)) &&
+        (!data.keys().hasAny(['neighborhood']) || optionalText(data, 'neighborhood', 100)) &&
+        (!data.keys().hasAny(['city']) || optionalText(data, 'city', 100)) &&
+        (!data.keys().hasAny(['postalCode']) || optionalText(data, 'postalCode', 10)) &&
+        (!data.keys().hasAny(['phone']) || optionalText(data, 'phone', 20)) &&
+        (!data.keys().hasAny(['guardianPhone']) || optionalText(data, 'guardianPhone', 20)) &&
+        (!data.keys().hasAny(['createdAt']) || data.createdAt is timestamp);
     }
 
     function validNewStudent(data) {
@@ -139,8 +103,7 @@ service cloud.firestore {
     }
 
     function validExistingStudent(data) {
-      return validStudent(data) &&
-        (!data.keys().hasAny(['createdAt']) || data.createdAt is timestamp);
+      return validStudent(data);
     }
 
     function validClass(data) {
