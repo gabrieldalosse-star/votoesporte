@@ -314,6 +314,22 @@
       <div class="dialog-actions"><button id="tour-back" class="button button-secondary" type="button">Voltar</button><button id="tour-next" class="button button-primary" type="button">Próximo</button></div>
     </dialog>
 
+    <script>
+      // Fail visibly if Firebase modules or authentication never finish loading.
+      window.setTimeout(function () {
+        var loading = document.getElementById("loading-screen");
+        if (!loading || loading.classList.contains("hidden")) return;
+        loading.classList.add("hidden");
+        var auth = document.getElementById("auth-screen");
+        if (auth) auth.classList.remove("hidden");
+        var notice = document.createElement("div");
+        notice.setAttribute("role", "alert");
+        notice.style.cssText = "position:fixed;bottom:16px;left:12px;right:12px;z-index:99999;padding:18px;background:white;color:#172b4d;border-radius:12px;box-shadow:0 4px 22px #0005;font:16px system-ui";
+        notice.innerHTML = '<strong>O aplicativo não concluiu a inicialização.</strong><p>O site abriu, mas o carregamento do sistema ou do Firebase não terminou.</p><button type="button" style="padding:10px 16px;background:#0759ae;color:white;border:0;border-radius:8px">Tentar novamente</button>';
+        notice.querySelector("button").addEventListener("click", function () { location.reload(); });
+        document.body.appendChild(notice);
+      }, 12000);
+    </script>
     <script src="firebase-config.js"></script>
     <script type="module" src="assets/app.js"></script>
   </body>
