@@ -1,0 +1,32 @@
+{
+  "type": "FeatureCollection",
+  "name": "Censo Esportivo de Votorantim — 4 setores preliminares",
+  "metadata": {
+    "sourceVersion": "Censo Esportivo de Votorantim · setores preliminares aproximados · 2026",
+    "status": "preliminar e não oficial",
+    "disclaimer": "Geometrias aproximadas para visualização operacional. Não representam limites oficiais de bairros, zoneamento, CEP ou atendimento e devem ser substituídas após validação institucional.",
+    "crs": "EPSG:4326"
+  },
+  "features": [
+    {
+      "type": "Feature",
+      "properties": { "name": "Setor Oeste", "sector": "Oeste", "status": "preliminar" },
+      "geometry": { "type": "Polygon", "coordinates": [[[-47.4286,-23.5223],[-47.5028,-23.5358],[-47.4925,-23.5842],[-47.4669,-23.6245],[-47.445,-23.608],[-47.445,-23.582],[-47.4286,-23.5223]]] }
+    },
+    {
+      "type": "Feature",
+      "properties": { "name": "Setor Centro", "sector": "Centro", "status": "preliminar" },
+      "geometry": { "type": "Polygon", "coordinates": [[[-47.3543,-23.5609],[-47.4286,-23.5223],[-47.445,-23.582],[-47.445,-23.608],[-47.418,-23.606],[-47.382,-23.590],[-47.38,-23.558],[-47.3543,-23.5609]]] }
+    },
+    {
+      "type": "Feature",
+      "properties": { "name": "Setor Sul", "sector": "Sul", "status": "preliminar" },
+      "geometry": { "type": "Polygon", "coordinates": [[[-47.445,-23.608],[-47.4669,-23.6245],[-47.4942,-23.65],[-47.4542,-23.6255],[-47.4045,-23.6212],[-47.3684,-23.6338],[-47.382,-23.590],[-47.418,-23.606],[-47.445,-23.608]]] }
+    },
+    {
+      "type": "Feature",
+      "properties": { "name": "Setor Leste", "sector": "Leste", "status": "preliminar" },
+      "geometry": { "type": "Polygon", "coordinates": [[[-47.3075,-23.561],[-47.3543,-23.5609],[-47.38,-23.558],[-47.382,-23.590],[-47.3684,-23.6338],[-47.3371,-23.6116],[-47.2968,-23.6037],[-47.3075,-23.561]]] }
+    }
+  ]
+}
