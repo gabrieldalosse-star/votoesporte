@@ -633,9 +633,21 @@ function renderDashboard() {
   const present = histories.reduce((sum, entry) => sum + Number(entry.presentCount || countPresent(entry.records)), 0);
   const rate = marked ? Math.round((present / marked) * 100) : 0;
 
+  const seen = new Set();
+  Object.values(state.studentsByClass).flat().forEach((student) => {
+    const key = [String(student.fullName || "").trim().toLocaleLowerCase("pt-BR"), student.birthDate || ""].join("|");
+    if (key !== "|") seen.add(key);
+  });
+  const uniqueParticipants = seen.size;
+  const activeClasses = state.classes.filter((item) => item.active !== false).length;
+  const sports = new Set(state.classes.map((item) => item.sport).filter(Boolean)).size;
+  const locations = new Set(state.classes.map((item) => item.location).filter(Boolean)).size;
   ui["dashboard-stats"].innerHTML = [
-    ["Turmas ativas", state.classes.filter((item) => item.active !== false).length, "organizadas na sua conta", "◒"],
-    ["Alunos carregados", totalStudents || "—", totalStudents ? "nas turmas abertas" : "cadastre ou importe alunos", "◉"],
+    ["Participantes identificados", uniqueParticipants || "—", "estimativa entre os cadastros carregados", "◉"],
+    ["Matrículas carregadas", totalStudents || "—", "vínculos nas turmas acessíveis", "◎"],
+    ["Turmas ativas", activeClasses, "turmas acessíveis", "◒"],
+    ["Atividades", sports, "modalidades das turmas", "◆"],
+    ["Locais", locations, "polos das turmas", "⌖"],
     ["Chamadas no mês", histories.length, "registros já salvos", "✓"],
     ["Presença no mês", marked ? `${rate}%` : "—", marked ? `${present} presença${present === 1 ? "" : "s"} marcada${present === 1 ? "" : "s"}` : "aguardando primeira chamada", "↗"]
   ].map(([label, value, note, icon]) => `<article class="panel stat-card"><div class="stat-label"><span>${label}</span><i class="stat-icon" aria-hidden="true">${icon}</i></div><strong>${value}</strong><small>${note}</small></article>`).join("");
@@ -921,6 +933,7 @@ function openClassDialog(classId = "") {
   } else {
     ui["class-dialog-title"].textContent = "Cadastrar turma";
   }
+  window.CensoV2?.openClass(form, item);
   setFormMessage("class-form-message", "");
   showDialog("class-dialog");
 }
@@ -933,6 +946,8 @@ async function saveClass(event) {
     setFormMessage("class-form-message", "Nome da turma e modalidade são obrigatórios.");
     return;
   }
+  const scheduleError = window.CensoV2?.prepareClass(form, values);
+  if (scheduleError) { setFormMessage("class-form-message", scheduleError); return; }
   setFormMessage("class-form-message", "Salvando…", true);
   try {
     const id = await repository.saveClass(values);
@@ -965,6 +980,7 @@ function openStudentDialog(classId, studentId = "") {
     form.elements.censusReviewStatus.value = "pending";
   }
   syncTerritoryFields(form);
+  window.CensoV2?.openStudent(form);
   updateStudentAgePreview();
   setFormMessage("student-form-message", "");
   showDialog("student-dialog");
@@ -1121,10 +1137,11 @@ function contactStudent(classId, studentId, channel) {
 }
 
 async function generateReport() {
-  const month = ui["report-month"].value;
+  const mode = ui["report-period-type"]?.value || "month";
+  const month = mode === "week" ? ui["report-week"]?.value : ui["report-month"].value;
   const classId = ui["report-class"].value;
   if (!month) {
-    toast("Selecione o mês do relatório.", "error");
+    toast("Selecione o período do relatório.", "error");
     return;
   }
   const targets = classId === "all" ? state.classes : state.classes.filter((item) => item.id === classId);
@@ -1136,7 +1153,7 @@ async function generateReport() {
   button.disabled = true;
   button.textContent = "Gerando…";
   try {
-    const report = await buildReport(month, targets);
+    const report = await buildReport(month, targets, mode);
     state.report = report;
     renderReport();
     toast("Relatório gerado.");
@@ -1149,8 +1166,22 @@ async function generateReport() {
   }
 }
 
-async function buildReport(month, classes) {
-  const { start, end } = monthBounds(month);
+function isoWeekBounds(week) {
+  const match = /^(\d{4})-W(\d{2})$/.exec(week || "");
+  if (!match) throw new Error("Semana inválida.");
+  const year = Number(match[1]), number = Number(match[2]);
+  if (number < 1 || number > 53) throw new Error("Semana inválida.");
+  const jan4 = new Date(Date.UTC(year, 0, 4));
+  const monday = new Date(jan4);
+  monday.setUTCDate(jan4.getUTCDate() - ((jan4.getUTCDay() + 6) % 7) + (number - 1) * 7);
+  const sunday = new Date(monday);
+  sunday.setUTCDate(monday.getUTCDate() + 6);
+  const iso = date => date.toISOString().slice(0, 10);
+  return { start: iso(monday), end: iso(sunday) };
+}
+
+async function buildReport(month, classes, mode = "month") {
+  const { start, end } = mode === "week" ? isoWeekBounds(month) : monthBounds(month);
   const classReports = [];
   const individualRows = [];
   const territory = new Map();
@@ -1223,7 +1254,7 @@ async function buildReport(month, classes) {
     .filter((row) => row.students.size >= 5)
     .map((row) => ({ ...row, students: row.students.size, rate: row.marked ? Math.round((row.present / row.marked) * 100) : null }))
     .sort((a, b) => String(a.label).localeCompare(String(b.label), "pt-BR"));
-  return { month, classes, classReports, teacherReports, territoryReports, individualRows, totalMarked, totalPresent, sessions, rate: totalMarked ? Math.round((totalPresent / totalMarked) * 100) : 0, generatedAt: new Date() };
+  return { month, mode, start, end, classes, classReports, teacherReports, territoryReports, individualRows, totalMarked, totalPresent, sessions, rate: totalMarked ? Math.round((totalPresent / totalMarked) * 100) : 0, generatedAt: new Date() };
 }
 
 function renderReport() {
@@ -1231,7 +1262,7 @@ function renderReport() {
   if (!report) return;
   ui["report-empty"].classList.add("hidden");
   ui["report-content"].classList.remove("hidden");
-  const period = formatMonth(report.month);
+  const period = report.mode === "week" ? `Semana ${report.month.slice(6)} de ${report.month.slice(0,4)} (${report.start} a ${report.end})` : formatMonth(report.month);
   const participantCount = report.individualRows.length;
   const classSummary = report.classReports.map((row) => `
     <div class="class-report-row"><div><strong>${escapeHtml(row.classItem.name || "Turma")}</strong><small>${row.attendance.length} chamada${row.attendance.length === 1 ? "" : "s"} · ${row.marked} marcação${row.marked === 1 ? "" : "ões"}</small></div><span>${row.rate === null ? "—" : `${row.rate}%`}</span><div class="progress-track"><i style="width:${row.rate || 0}%"></i></div></div>`).join("") || `<p>Nenhuma turma com dados no período.</p>`;
@@ -1258,7 +1289,7 @@ function exportReportCsv() {
     ...report.individualRows.map((row) => [report.month, row.teacherName, row.className, row.student.preferredName || row.student.fullName || "", row.student.territoryZoneName || row.student.geo?.zoneLabel || "", row.student.territorySector || row.student.geo?.sector || "", row.present, row.absent, row.marked, `${row.rate}%`, row.trend.label])
   ];
   const csv = "\uFEFF" + lines.map((line) => line.map(csvCell).join(";")).join("\n");
-  downloadBlob(csv, `relatorio-presenca-${report.month}.csv`, "text/csv;charset=utf-8");
+  downloadBlob(csv, `relatorio-presenca-${report.mode || "mes"}-${report.month}.csv`, "text/csv;charset=utf-8");
   toast("CSV preparado para download.");
 }
 

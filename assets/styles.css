@@ -502,3 +502,9 @@ fieldset legend { padding: 0 6px; color: var(--forest); font-size: .74rem; font-
 .territory-report-row .progress-track { grid-column: 1 / -1; }
 @media (max-width: 940px) { .territory-layout { grid-template-columns: 1fr; } .territory-zone-list { max-height: 260px; } }
 @media (max-width: 640px) { .territory-summary { grid-template-columns: 1fr 1fr; } .territory-map { min-height: 290px; } .territory-svg, .territory-map-empty { min-height: 290px; } .territory-map-panel, .territory-zone-panel { padding: 16px; } .census-guidance { align-items: flex-start; flex-direction: column; } .census-guidance-tags { justify-content: flex-start; } .contact-actions { min-width: 118px; } }
+
+/* Censo Esportivo V2 */
+.official-brand-row{display:flex;align-items:center;justify-content:center;gap:2rem;flex-wrap:wrap;background:#fff;border:1px solid #dce5ec;border-radius:18px;padding:14px;margin-bottom:18px}.official-brand-row img{max-height:95px;max-width:45%;width:auto;object-fit:contain}.censo-shortcuts{display:flex;gap:10px;flex-wrap:wrap;margin:0 0 22px}.censo-count-note,.censo-report-info{color:#50647a;font-size:.84rem;margin:8px 0 18px}.days-picker{display:flex;gap:8px;flex-wrap:wrap;margin-top:8px}.days-picker label{display:flex;gap:4px;align-items:center;border:1px solid #d4dfeb;padding:9px;border-radius:10px}.days-picker input{width:auto}.dialog fieldset[hidden]{display:none!important}#censo-student-primary .form-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}#censo-student-primary .form-grid label{min-width:0}#censo-student-primary .form-grid input,#censo-student-primary .form-grid select{width:100%}@media(max-width:640px){#censo-student-primary .form-grid{grid-template-columns:1fr}.official-brand-row img{max-height:76px}}
+
+/* V3: preserve native hidden state on report filter wrappers */
+#report-week-wrap[hidden], #report-month-wrap[hidden] { display: none !important; }
