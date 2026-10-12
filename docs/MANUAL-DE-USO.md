@@ -50,7 +50,7 @@ Uma turma pertence ao professor que a criou. Para transferir responsabilidade en
 
 ## Cadastrar um aluno individualmente
 
-Dentro de uma turma, escolha a opção para adicionar aluno. O cadastro foi organizado por blocos para evitar esquecer informações necessárias e, ao mesmo tempo, não exigir dados em excesso.
+Dentro de uma turma, escolha a opção para adicionar aluno. O cadastro abre com apenas turma e **nome completo**. Depois de salvar, ou antes se for necessário, abra “Adicionar dados da ficha original” para complementar a ficha sem impedir a matrícula inicial.
 
 | Bloco | Informações disponíveis | Como usar com responsabilidade |
 | --- | --- | --- |
@@ -69,7 +69,7 @@ O nome completo é a informação essencial para criar o registro. Os demais cam
 1. Crie a turma de destino.
 2. Abra **Importar alunos** no menu.
 3. Escolha a turma correta.
-4. Baixe **Baixar modelo CSV** ou abra o arquivo `data/modelo-importacao-alunos.csv`.
+4. Baixe **Baixar modelo CSV oficial** ou abra o arquivo `data/MODELO-CADASTRO-CENSO-WILLIAN-VAZIO.csv`.
 5. Preencha a sua cópia e salve-a em formato **CSV UTF-8**.
 
 O modelo contém somente o cabeçalho, sem linhas de pessoas. Não altere os nomes das colunas e não acrescente dados no arquivo-modelo original; trabalhe sempre em uma cópia.
@@ -77,12 +77,8 @@ O modelo contém somente o cabeçalho, sem linhas de pessoas. Não altere os nom
 ### Colunas aceitas
 
 ```text
-nome_completo,nome_social,data_nascimento,matricula_codigo,responsavel_nome,
-telefone_responsavel,telefone_aluno,telefone_alternativo,email_responsavel,
-contato_preferencial,canal_contato_autorizado,data_consentimento,cep,uf,
-logradouro,numero,complemento,bairro,cidade,escola,turno,codigo_censo,
-identificador_censo,referencia_coleta_censo,status_revisao_censo,
-zona_territorial,setor_territorial,fonte_territorial,situacao_matricula,observacoes
+turma;nome;sexo;idade;data_nascimento;rua;numero;bairro;cidade;cep;
+telefone;pcd;nome_responsavel;telefone_responsavel;data_cadastro
 ```
 
 Regras práticas:
@@ -90,13 +86,12 @@ Regras práticas:
 - uma linha representa um aluno e a importação deve conter somente alunos da turma selecionada;
 - use data no formato `AAAA-MM-DD` quando preencher `data_nascimento`;
 - mantenha CEP, telefone, matrícula e código externo como texto para preservar zeros iniciais;
-- use `Ativa`, `Pendente` ou `Inativa` em `situacao_matricula`;
-- use `whatsapp`, `call`, `both`, `no_contact` ou `not_informed` em `canal_contato_autorizado`;
-- não preencha telefone do aluno, canal de contato ou data de consentimento sem confirmação institucional;
-- revise duplicidades de matrícula e de nome antes de enviar;
-- não use a coluna `observacoes` para conteúdo sensível.
+- o nome é o único campo necessário para a matrícula inicial; complete endereço e contatos apenas quando necessários;
+- `idade` é apenas uma referência da planilha: o aplicativo calcula a idade pela data de nascimento;
+- bairro e cidade alimentam os totais territoriais; sem esses campos o cadastro permanece contado, em “Bairro não informado”;
+- revise duplicidades de nome e a turma de destino antes de enviar.
 
-Após selecionar o arquivo, o sistema mostra uma prévia. Confira a quantidade de linhas, a turma de destino e os campos antes de selecionar **Importar alunos revisados**. Se houver dúvida, cancele a importação, corrija a cópia do CSV e envie de novo.
+Após selecionar o arquivo, o sistema mostra uma prévia. Confira a quantidade de linhas, a turma de destino e os campos, marque a confirmação de revisão e então selecione **Importar alunos revisados**. Se houver dúvida, cancele a importação, corrija a cópia do CSV e envie de novo. Consulte também a [Política de importação](POLITICA-DE-IMPORTACAO.md).
 
 ### Sobre a planilha consolidada e o Censo+
 
@@ -113,12 +108,12 @@ Abra **Censo+ e território** para consultar o mapa agregado. Apenas administrad
 ## Fazer chamada
 
 1. Abra **Fazer chamada**.
-2. Selecione a turma e confirme a data. A data pode ser ajustada para corrigir uma chamada passada, se a política da instituição permitir.
+2. Selecione a turma, confirme a data e informe o horário da chamada. A data pode ser ajustada para corrigir uma chamada passada, se a política da instituição permitir.
 3. Revise a lista. Marque presença ou falta de cada aluno, ou use **Todos presentes** como ponto de partida e ajuste as exceções.
 4. Confira o indicador de alunos marcados.
 5. Escolha **Salvar chamada** e aguarde a confirmação.
 
-Uma chamada fica associada à turma e à data. Antes de fechar a página, confirme que o estado indica que a gravação foi concluída. Se a conexão cair, não suponha que a alteração foi sincronizada; recarregue depois de recuperar a internet e confira a data escolhida.
+Uma chamada fica associada à turma, data e horário. O total de “presente” informa quantas pessoas estavam em aula naquele momento registrado. Antes de fechar a página, confirme que o estado indica que a gravação foi concluída. Se a conexão cair, não suponha que a alteração foi sincronizada; recarregue depois de recuperar a internet e confira a data escolhida.
 
 ## Consultar histórico e evolução de frequência
 

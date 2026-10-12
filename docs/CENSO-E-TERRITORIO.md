@@ -2,11 +2,12 @@
 
 ## O que esta versão faz agora
 
-- Mantém a chamada por turma e data como registro independente.
+- Mantém a chamada por turma, data e horário como registro independente, para informar quantas pessoas estavam presentes no momento registrado.
 - Amplia o cadastro de aluno sem remover os campos já existentes.
 - Guarda contato, Censo+ e território em grupos adicionais no mesmo documento do aluno.
 - Oferece botões de WhatsApp e ligação somente depois que o canal autorizado for registrado; a ação sempre exige clique manual e não envia mensagem automática.
-- Exibe um mapa de zonas agregadas, sem endereço, rua, número, coordenada residencial ou marcador individual.
+- Exibe somente Votorantim no mapa, com limite municipal da Malha Municipal 2024 do IBGE, sem endereço, rua, número, coordenada residencial ou marcador individual.
+- Oferece um catálogo de nomes de bairros publicado pela Prefeitura para classificar os cadastros e alimentar os gráficos agregados.
 
 ## Estrutura aditiva do aluno
 
@@ -64,10 +65,14 @@ Não envie o endereço de aluno a geocodificadores externos e não importe ponto
 
 ## Fontes e validação
 
-O portal de Dados Abertos de Votorantim não disponibiliza, neste momento, uma malha pública de bairros ou setores pronta em GeoJSON. O Município divulga mapas de zoneamento em PDF, que não devem ser vetorizados ou tratados como setor de atendimento sem validação.
+O portal de Dados Abertos de Votorantim não disponibiliza, neste momento, uma malha pública de bairros ou setores pronta em GeoJSON. O Município divulga nomes de bairros em seus serviços e mapas de zoneamento em PDF, mas esses PDFs não devem ser vetorizados nem tratados como setor de atendimento sem validação. Por isso, o aplicativo mostra a contagem por bairro no censo e só desenha polígonos depois da importação de uma camada oficial ou formalmente aprovada.
+
+O Google Maps pode ser usado pela equipe como **referência visual** para conferir o nome retornado por um CEP e a coerência de uma divisão proposta. Não copie nem extraia sua cartografia para o repositório ou para o GeoJSON: uma camada desenhada a partir dessa conferência deve ser marcada como operacional/provisória, revisada pela gestão e substituída assim que houver fonte territorial licenciada ou municipal.
 
 - [Dados Abertos de Votorantim](https://www.votorantim.sp.gov.br/portal/dados-abertos)
+- [Catálogo público de bairros — Prefeitura de Votorantim](https://www.votorantim.sp.gov.br/portal/obras)
 - [Mapas do Plano Diretor de Votorantim](https://www.votorantim.sp.gov.br/portal/arquivos/2/0/0/0/0/0/0/0)
+- [Malhas Territoriais — IBGE](https://www.ibge.gov.br/geociencias/organizacao-do-territorio/malhas-territoriais/15774-malhas.html)
 - [Malhas de bairros do Censo 2022 — IBGE](https://www.ibge.gov.br/geociencias/organizacao-do-territorio/estrutura-territorial/26565-malhas-de-setores-censitarios-divisoes-intramunicipais.html?=&t=downloads)
 - [Serviço de Informação ao Cidadão de Votorantim](https://www.votorantim.sp.gov.br/portal/sic)
 
