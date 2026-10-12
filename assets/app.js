@@ -413,6 +413,7 @@ function subscribeTerritoryZones() {
 
 function afterTerritoryZonesChanged() {
   populateTerritoryZoneOptions();
+  populateClassTerritoryZoneOptions();
   renderTerritory();
   renderClasses();
 }
@@ -429,6 +430,17 @@ function populateTerritoryZoneOptions(selectedValue = ui["student-territory-zone
   ui["territory-field-help"].textContent = state.territoryZones.length
     ? `${state.territoryZones.length} zona${state.territoryZones.length === 1 ? "" : "s"} aprovada${state.territoryZones.length === 1 ? "" : "s"} disponível${state.territoryZones.length === 1 ? "" : "is"}. A seleção permanece manual para proteger o endereço.`
     : "A seleção é manual até a gestão importar uma camada territorial aprovada. Não há geocodificação de endereço.";
+}
+
+function populateClassTerritoryZoneOptions(selectedValue = ui["class-territory-zone"]?.value || "") {
+  const select = ui["class-territory-zone"];
+  if (!select) return;
+  const options = state.territoryZones.map((zone) => {
+    const label = [zone.name, zone.sector].filter(Boolean).join(" · ");
+    return `<option value="${escapeAttr(zone.id)}">${escapeHtml(label || "Zona sem nome")}</option>`;
+  }).join("");
+  select.innerHTML = `<option value="">Definir depois</option>${options}`;
+  select.value = state.territoryZones.some((zone) => zone.id === selectedValue) ? selectedValue : "";
 }
 
 function syncTerritoryFields(form) {
@@ -451,6 +463,32 @@ function territoryStudentsByZone() {
   }, {});
 }
 
+function classesForTerritoryZone(zone) {
+  if (!zone) return [];
+  const zoneName = comparableText(zone.name);
+  return state.classes.filter((item) => {
+    if (item.territoryZoneId === zone.id) return true;
+    // Legacy classes did not have a zone field. Match only an explicit local
+    // name so that an unrelated address never appears as territorial data.
+    return zoneName && comparableText(item.location).includes(zoneName);
+  });
+}
+
+function territoryZonePopup(zone, studentCount) {
+  const classes = classesForTerritoryZone(zone);
+  const activities = classes.length
+    ? `<ul class="territory-map-classes">${classes.map((item) => `<li><strong>${escapeHtml(item.location || "Núcleo sem local")}</strong><span>${escapeHtml([item.sport, item.name, item.schedule].filter(Boolean).join(" · ") || "Aula sem detalhes")}</span></li>`).join("")}</ul>`
+    : `<p class="territory-map-empty-detail">Nenhuma aula vinculada a este bairro ainda.</p>`;
+  return `<div class="territory-map-popup"><h4>${escapeHtml(zone.name || "Bairro")}</h4><p>${studentCount} cadastro${studentCount === 1 ? "" : "s"} associado${studentCount === 1 ? "" : "s"} · ${classes.length} núcleo${classes.length === 1 ? "" : "s"}</p><h5>Núcleos e aulas</h5>${activities}</div>`;
+}
+
+function selectTerritoryZoneFromMap(zoneId) {
+  state.selectedTerritoryZoneId = zoneId;
+  $$('[data-action="select-territory-zone"]').forEach((button) => {
+    button.classList.toggle("selected", button.dataset.id === zoneId);
+  });
+}
+
 function renderTerritory() {
   if (!ui["territory-summary"]) return;
   const zones = state.territoryZones;
@@ -471,8 +509,9 @@ function renderTerritory() {
   mountOfficialTerritoryMap(zones, counts);
   ui["territory-zone-list"].innerHTML = zones.length ? zones.map((zone) => {
     const count = counts[zone.id] || 0;
+    const classCount = classesForTerritoryZone(zone).length;
     const selected = zone.id === state.selectedTerritoryZoneId;
-    return `<button class="territory-zone-row ${selected ? "selected" : ""}" data-action="select-territory-zone" data-id="${escapeAttr(zone.id)}" type="button"><span class="zone-swatch" aria-hidden="true"></span><span><strong>${escapeHtml(zone.name || "Zona sem nome")}</strong><small>${escapeHtml(zone.sector || "Setor não informado")}</small></span><b>${count}</b></button>`;
+    return `<button class="territory-zone-row ${selected ? "selected" : ""}" data-action="select-territory-zone" data-id="${escapeAttr(zone.id)}" type="button"><span class="zone-swatch" aria-hidden="true"></span><span><strong>${escapeHtml(zone.name || "Zona sem nome")}</strong><small>${escapeHtml(zone.sector || "Setor não informado")} · ${classCount} núcleo${classCount === 1 ? "" : "s"}</small></span><b>${count}</b></button>`;
   }).join("") : `<div class="territory-empty"><span aria-hidden="true">⌖</span><strong>Camada ainda não importada</strong><p>${state.isAdmin ? "Use o botão acima para importar um GeoJSON aprovado." : "Peça à gestão a importação de uma camada aprovada."}</p></div>`;
 }
 
@@ -517,7 +556,8 @@ async function mountOfficialTerritoryMap(zones, counts) {
         style: { color: selected ? "#9e1f2a" : "#1268b2", weight: selected ? 3 : 2, fillColor: selected ? "#c62d37" : "#2f94bf", fillOpacity: selected ? 0.38 : 0.22 }
       }).addTo(map);
       layer.bindTooltip(`${zone.name || "Zona"} · ${total} cadastro${total === 1 ? "" : "s"}`, { sticky: true });
-      layer.on("click", () => { state.selectedTerritoryZoneId = zone.id; renderTerritory(); });
+      layer.bindPopup(territoryZonePopup(zone, total), { maxWidth: 360 });
+      layer.on("click", () => selectTerritoryZoneFromMap(zone.id));
     });
   } catch (error) {
     console.error("Falha ao carregar a malha oficial", error);
@@ -551,7 +591,7 @@ function mountGoogleTerritoryMap(target, boundary, zones, counts) {
     streetViewControl: false, fullscreenControl: true, mapTypeControl: true
   });
   state.googleTerritoryMap = map;
-  const features = [{ type: "Feature", properties: { appLayer: "municipal" }, geometry: boundary.features?.[0]?.geometry }, ...zones.filter((zone) => geometryPoints(zone.geometry).length).map((zone) => ({ type: "Feature", properties: { appLayer: "zone", zoneId: zone.id, zoneName: zone.name || "Zona", total: counts[zone.id] || 0 }, geometry: zone.geometry }))].filter((feature) => feature.geometry);
+  const features = [{ type: "Feature", properties: { appLayer: "municipal" }, geometry: boundary.features?.[0]?.geometry }, ...zones.filter((zone) => geometryPoints(zone.geometry).length).map((zone) => ({ type: "Feature", properties: { appLayer: "zone", zoneId: zone.id, zoneName: zone.name || "Zona", total: counts[zone.id] || 0, popup: territoryZonePopup(zone, counts[zone.id] || 0) }, geometry: zone.geometry }))].filter((feature) => feature.geometry);
   map.data.addGeoJson({ type: "FeatureCollection", features });
   map.data.setStyle((feature) => {
     if (feature.getProperty("appLayer") === "municipal") return { strokeColor: "#063b79", strokeWeight: 3, fillColor: "#2f94bf", fillOpacity: 0.07, clickable: false };
@@ -561,8 +601,9 @@ function mountGoogleTerritoryMap(target, boundary, zones, counts) {
   map.data.addListener("click", (event) => {
     const zoneId = event.feature.getProperty("zoneId");
     if (!zoneId) return;
-    state.selectedTerritoryZoneId = zoneId;
-    renderTerritory();
+    const popup = new maps.InfoWindow({ content: event.feature.getProperty("popup"), position: event.latLng });
+    popup.open({ map });
+    selectTerritoryZoneFromMap(zoneId);
   });
   const points = geometryPoints(boundary.features?.[0]?.geometry);
   if (points.length) {
@@ -1088,9 +1129,10 @@ function openClassDialog(classId = "") {
   form.reset();
   const item = state.classes.find((row) => row.id === classId);
   form.elements.classId.value = classId;
+  populateClassTerritoryZoneOptions(item?.territoryZoneId || "");
   if (item) {
     ui["class-dialog-title"].textContent = "Editar turma";
-    ["name", "sport", "ageGroup", "location", "schedule", "notes"].forEach((key) => { form.elements[key].value = item[key] || ""; });
+    ["name", "sport", "ageGroup", "location", "territoryZoneId", "schedule", "notes"].forEach((key) => { form.elements[key].value = item[key] || ""; });
   } else {
     ui["class-dialog-title"].textContent = "Cadastrar turma";
   }
@@ -1661,7 +1703,7 @@ function handleDynamicInput(event) {
   }
   if (event.target.name === "postalCode") event.target.value = formatPostalCode(event.target.value);
   if (["guardianPhone", "studentPhone", "phone"].includes(event.target.name)) event.target.value = formatPhone(event.target.value);
-  if (event.target.name === "territoryZoneId") syncTerritoryFields(ui["student-form"]);
+  if (event.target.name === "territoryZoneId" && event.target.form === ui["student-form"]) syncTerritoryFields(ui["student-form"]);
 }
 
 async function lookupPostalCode() {
@@ -1763,6 +1805,7 @@ const repository = {
       sport: values.sport,
       ageGroup: values.ageGroup,
       location: values.location,
+      territoryZoneId: values.territoryZoneId || "",
       schedule: values.schedule,
       notes: values.notes,
       active: existing?.active ?? true,

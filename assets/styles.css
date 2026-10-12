@@ -467,6 +467,15 @@ fieldset legend { padding: 0 6px; color: var(--forest); font-size: .74rem; font-
 .official-territory-map { min-height: 385px; width: 100%; background: #edf4f7; }
 .official-territory-map .leaflet-control-attribution { max-width: calc(100% - 16px); font-size: .65rem; }
 .territory-map-credit { margin: 8px 4px 0; color: var(--ink-soft); font-size: .7rem; line-height: 1.4; }
+.territory-map-popup { min-width: 210px; color: var(--ink); font-family: inherit; }
+.territory-map-popup h4 { margin: 0 0 4px; color: var(--forest); font-size: .96rem; }
+.territory-map-popup h5 { margin: 12px 0 5px; font-size: .78rem; text-transform: uppercase; letter-spacing: .04em; }
+.territory-map-popup p { margin: 0; color: var(--ink-soft); font-size: .75rem; line-height: 1.4; }
+.territory-map-classes { display: grid; gap: 7px; margin: 0; padding: 0; list-style: none; }
+.territory-map-classes li { padding: 7px 8px; border-radius: 8px; background: #f1f7fd; font-size: .75rem; }
+.territory-map-classes strong, .territory-map-classes span { display: block; }
+.territory-map-classes span { margin-top: 2px; color: var(--ink-soft); line-height: 1.35; }
+.territory-map-empty-detail { padding: 8px; border-radius: 8px; background: #f7f9fb; }
 .territory-svg { display: block; width: 100%; height: 100%; min-height: 385px; }
 .territory-map-background { fill: #f6fbff; }
 .territory-contour { fill: none; stroke: #c2dcf3; stroke-width: 12; stroke-linecap: round; opacity: .72; }
