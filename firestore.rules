@@ -167,14 +167,15 @@ service cloud.firestore {
 
     function validAttendance(data, classId, sessionId) {
       return data.keys().hasOnly([
-          'date', 'classId', 'className', 'teacherId', 'teacherName', 'records',
+          'date', 'sessionTime', 'classId', 'className', 'teacherId', 'teacherName', 'records',
           'markedCount', 'presentCount', 'absentCount', 'updatedAt'
         ]) &&
         data.keys().hasAll([
-          'date', 'classId', 'className', 'teacherId', 'teacherName', 'records',
+          'date', 'sessionTime', 'classId', 'className', 'teacherId', 'teacherName', 'records',
           'markedCount', 'presentCount', 'absentCount', 'updatedAt'
         ]) &&
         data.date is string && data.date == sessionId && data.date.size() == 10 &&
+        data.sessionTime is string && data.sessionTime.size() == 5 &&
         data.classId is string && data.classId == classId &&
         data.className is string && data.className.size() <= 120 &&
         data.teacherId is string && data.teacherId == get(/databases/$(database)/documents/classes/$(classId)).data.teacherId &&
@@ -204,6 +205,30 @@ service cloud.firestore {
         data.importedFrom == 'geojson-approved' &&
         data.importedAtClient is string && data.importedAtClient.size() <= 40 &&
         data.updatedAt is timestamp;
+    }
+
+    // A deletion is auditable before a browser is allowed to remove records.
+    // This is deliberately a separate immutable collection so it cannot be
+    // hidden in the class document that is about to be deleted.
+    function validDeletionAudit(data) {
+      return data.keys().hasOnly([
+          'action', 'classId', 'className', 'studentId', 'studentName',
+          'backupReference', 'actorUid', 'actorEmail', 'appVersion', 'createdAt'
+        ]) &&
+        data.keys().hasAll([
+          'action', 'classId', 'backupReference', 'actorUid', 'actorEmail',
+          'appVersion', 'createdAt'
+        ]) &&
+        data.action in ['delete_class', 'delete_student'] &&
+        data.classId is string && data.classId.size() > 0 && data.classId.size() <= 160 &&
+        optionalText(data, 'className', 120) &&
+        optionalText(data, 'studentId', 160) &&
+        optionalText(data, 'studentName', 120) &&
+        data.backupReference is string && data.backupReference.size() >= 8 && data.backupReference.size() <= 240 &&
+        data.actorUid is string && data.actorUid == request.auth.uid &&
+        optionalText(data, 'actorEmail', 160) &&
+        data.appVersion is string && data.appVersion.size() <= 30 &&
+        data.createdAt is timestamp;
     }
 
     // A signed-in person may maintain only their own profile. Administrative
@@ -257,22 +282,31 @@ service cloud.firestore {
           resource.data.teacherId == request.auth.uid &&
           request.resource.data.teacherId == resource.data.teacherId));
 
-      allow delete: if isAdmin() ||
-        (signedIn() && resource.data.teacherId == request.auth.uid);
+      // Removing a class also affects participant and attendance records.
+      // It is therefore reserved to an administrator with an audit record.
+      allow delete: if isAdmin();
 
       // Student records are private to the class teacher and administrators.
       match /students/{studentId} {
-        allow read, delete: if canAccessClass(classId);
+        allow read: if canAccessClass(classId);
+        allow delete: if isAdmin();
         allow create: if canAccessClass(classId) && validNewStudent(request.resource.data);
         allow update: if canAccessClass(classId) && validExistingStudent(request.resource.data);
       }
 
       // Each document is one class session and its attendance information.
       match /attendance/{sessionId} {
-        allow read, delete: if canAccessClass(classId);
+        allow read: if canAccessClass(classId);
+        allow delete: if isAdmin();
         allow create, update: if canAccessClass(classId) &&
           validAttendance(request.resource.data, classId, sessionId);
       }
+    }
+
+    match /deletionAudit/{auditId} {
+      allow create: if isAdmin() && validDeletionAudit(request.resource.data);
+      allow read: if isAdmin();
+      allow update, delete: if false;
     }
   }
 }

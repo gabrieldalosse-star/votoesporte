@@ -7,3 +7,11 @@ window.FIREBASE_CONFIG = {
   messagingSenderId: "COLE_AQUI",
   appId: "COLE_AQUI"
 };
+
+// Opcional: ativa a interface do Google Maps no módulo Território.
+// A chave fica visível no navegador; proteja-a por referenciadores HTTP
+// e habilite somente as APIs indicadas em docs/GOOGLE-MAPS.md.
+window.GOOGLE_MAPS_CONFIG = {
+  apiKey: "",
+  mapId: ""
+};

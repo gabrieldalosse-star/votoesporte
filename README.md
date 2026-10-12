@@ -1,6 +1,6 @@
-# Censo Esportivo de Votorantim V4
+# Censo Esportivo de Votorantim V7
 
-Leia `docs/V4-ALTERACOES.md` antes de substituir o aplicativo. A exclusão administrativa é irreversível.
+Leia `docs/V7-RECONSTRUCAO-E-OPERACAO.md` antes de publicar. A exclusão administrativa é irreversível e exige referência de backup.
 
 # Votorantim Esporte & Censo+ · Chamada
 
@@ -17,8 +17,9 @@ A identidade em `assets/votorantim-esporte.svg` é uma ilustração original ins
 - Cadastro de turmas, alunos, contatos de responsáveis, telefone autorizado do aluno, referência escolar e base Censo+.
 - Ações manuais de WhatsApp e ligação após registro explícito do canal autorizado; a plataforma não envia mensagens automaticamente.
 - Painel Censo+ e território com zonas agregadas, importação administrativa de GeoJSON e sem exposição de endereço ou pinos individuais.
-- Importação revisável por CSV, com arquivo modelo sem linhas de exemplo.
-- Chamada por turma e data, com presença, falta e observação opcional.
+- Interface opcional do Google Maps, configurada por chave restrita e com o limite municipal IBGE sobreposto; veja [docs/GOOGLE-MAPS.md](docs/GOOGLE-MAPS.md).
+- Importação revisável por CSV, com o modelo oficial de 15 campos, confirmação explícita de revisão e modelo complementar opcional.
+- Chamada por turma, data e horário, com presença, falta e observação opcional; o painel mostra o total da última chamada.
 - Sincronização em tempo real entre navegadores autorizados pelo Cloud Firestore.
 - Histórico por turma e relatórios mensais por turma, professor e evolução individual de presença.
 - Exportação CSV e impressão otimizada para **Salvar como PDF**.
@@ -42,10 +43,12 @@ O site no GitHub Pages é público por natureza; a lista de alunos continua prot
 ├── assets/
 │   ├── app.js                       # Firebase, chamadas, relatórios e importação
 │   └── styles.css                   # Design responsivo
-├── data/modelo-importacao-alunos.csv
+├── data/MODELO-CADASTRO-CENSO-WILLIAN-VAZIO.csv
+├── data/modelo-importacao-complementar-opcional.csv
 ├── docs/
 │   ├── GUIA-FIREBASE.md
 │   ├── MANUAL-DE-USO.md
+│   ├── POLITICA-DE-IMPORTACAO.md
 │   ├── PRIVACIDADE-E-SEGURANCA.md
 │   ├── CONSUMO-E-ESCALA.md
 │   └── CENSO-E-TERRITORIO.md

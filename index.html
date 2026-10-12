@@ -10,6 +10,7 @@
     <meta name="theme-color" content="#063b79" />
     <title>Censo Esportivo de Votorantim · Gestão Municipal</title>
     <link rel="icon" href="assets/favicon.svg" type="image/svg+xml" />
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin="" />
     <link rel="stylesheet" href="assets/styles.css" />
   </head>
   <body>
@@ -155,12 +156,13 @@
 
             <section id="view-attendance" class="view" aria-labelledby="attendance-title">
               <div class="page-intro attendance-intro">
-                <div><span class="kicker">PRESENÇA</span><h2 id="attendance-title">Registro de frequência</h2><p>Marque a turma, revise e salve. A chamada fica vinculada à data escolhida.</p></div>
+                <div><span class="kicker">PRESENÇA</span><h2 id="attendance-title">Registro de frequência</h2><p>Marque a turma, data e horário. A chamada informa quantas pessoas estavam na aula naquele momento.</p></div>
                 <div class="save-attendance-area"><span id="attendance-save-state" class="save-state">Sem alterações</span><button id="save-attendance" class="button button-primary" type="button">Salvar frequência</button></div>
               </div>
               <article class="panel attendance-controls">
                 <label>Turma<select id="attendance-class" aria-label="Selecionar turma"></select></label>
                 <label>Data<input id="attendance-date" type="date" /></label>
+                <label>Horário<input id="attendance-time" type="time" aria-label="Horário da chamada" /></label>
                 <div class="attendance-summary"><span>Marcados</span><strong id="attendance-marked">0 / 0</strong><div class="mini-progress"><span id="attendance-progress"></span></div></div>
               </article>
               <article class="panel attendance-panel">
@@ -196,8 +198,8 @@
               <div id="territory-summary" class="territory-summary"></div>
               <div class="territory-layout">
                 <article class="panel territory-map-panel">
-                  <div class="panel-heading"><div><p class="eyebrow">MAPA OPERACIONAL</p><h3>Camada territorial aprovada</h3></div><span id="territory-layer-status" class="pill">Sem camada</span></div>
-                  <div class="official-map-box"><iframe title="Mapa geográfico de Votorantim — OpenStreetMap" loading="lazy" referrerpolicy="no-referrer" src="https://www.openstreetmap.org/export/embed.html?bbox=-47.52%2C-23.69%2C-47.31%2C-23.49&amp;layer=mapnik" style="width:100%;height:370px;border:0;border-radius:14px" ></iframe><p><a href="https://www.openstreetmap.org/#map=12/-23.56/-47.43" target="_blank" rel="noopener">Abrir mapa de Votorantim</a> · Cartografia © OpenStreetMap contributors. Mapa de ruas; não representa setores censitários nem zonas urbanísticas.</p><p><a href="https://geoftp.ibge.gov.br/cartas_e_mapas/mapas_para_fins_de_levantamentos_estatisticos/censo_demografico_2022/mapas_municipais_estatisticos/SP/votorantim_3557006/votorantim_3557006_mme_a1.pdf" target="_blank" rel="noopener">Consultar mapa oficial de setores censitários — IBGE 2022</a></p></div><div id="territory-map" class="territory-map" role="region" aria-label="Camadas territoriais aprovadas"></div>
+                  <div class="panel-heading"><div><p class="eyebrow">MAPA OPERACIONAL</p><h3>Votorantim e cobertura por bairro</h3></div><span id="territory-layer-status" class="pill">Sem camada</span></div>
+                  <div class="official-map-box"><p><strong>Base territorial verificável:</strong> o limite municipal exibido é a Malha Municipal 2024 do IBGE (código 3557006). O catálogo de bairros segue a nomenclatura publicada pela Prefeitura de Votorantim. A divisão espacial de bairros só será desenhada após importar uma camada oficial/aprovada; o sistema não inventa polígonos nem exibe endereços.</p><p><a href="https://www.ibge.gov.br/geociencias/organizacao-do-territorio/malhas-territoriais/15774-malhas.html" target="_blank" rel="noopener">Documentação da Malha Municipal do IBGE</a> · <a href="https://www.votorantim.sp.gov.br/portal/obras" target="_blank" rel="noopener">Catálogo público de bairros — Prefeitura</a></p></div><div id="territory-map" class="territory-map" role="region" aria-label="Mapa municipal oficial de Votorantim e camadas territoriais aprovadas"></div>
                   <p class="territory-disclaimer">A classificação é feita por zona, não por endereço. Importe somente uma camada oficial ou aprovada pela gestão.</p>
                 </article>
                 <article class="panel territory-zone-panel">
@@ -215,16 +217,16 @@
             <section id="view-import" class="view" aria-labelledby="import-title">
               <div class="page-intro">
                 <div><span class="kicker">MIGRAÇÃO ASSISTIDA</span><h2 id="import-title">Importação de cadastros</h2><p>Use o modelo de planilha para trazer alunos de uma turma de forma controlada e revisável.</p></div>
-                <a class="button button-secondary" href="data/modelo-importacao-alunos.csv" download>Baixar modelo CSV</a>
+                <a class="button button-secondary" href="data/MODELO-CADASTRO-CENSO-WILLIAN-VAZIO.csv" download>Baixar modelo CSV oficial</a>
               </div>
               <div class="import-grid">
                 <article class="panel import-flow">
                   <div class="step-number">1</div><div><h3>Escolha a turma</h3><p>Os dados serão armazenados somente dentro da turma selecionada.</p><select id="import-class" aria-label="Turma para importação"></select></div>
-                  <div class="step-number">2</div><div><h3>Envie o arquivo CSV</h3><p>O modelo já traz os campos reconhecidos pela plataforma.</p><label class="file-drop"><input id="import-file" type="file" accept=".csv,text/csv" /><span aria-hidden="true">⇧</span><strong>Selecionar arquivo CSV</strong><small>Nenhum arquivo selecionado</small></label></div>
-                  <div class="step-number">3</div><div><h3>Revise antes de salvar</h3><p id="import-summary">Ainda não há linhas para importar.</p><button id="confirm-import" class="button button-primary" type="button" disabled>Importação de cadastros revisados</button></div>
+                  <div class="step-number">2</div><div><h3>Envie o arquivo CSV</h3><p>O modelo oficial tem os 15 campos originais e aceita vírgula ou ponto e vírgula.</p><label class="file-drop"><input id="import-file" type="file" accept=".csv,text/csv" /><span aria-hidden="true">⇧</span><strong>Selecionar arquivo CSV</strong><small>Nenhum arquivo selecionado</small></label></div>
+                  <div class="step-number">3</div><div><h3>Revise antes de salvar</h3><p id="import-summary">Escolha uma turma, carregue um arquivo e confirme a revisão.</p><label class="checkbox-label"><input id="import-reviewed" type="checkbox" /> Revisei a turma, os nomes e os possíveis duplicados.</label><button id="confirm-import" class="button button-primary" type="button" disabled>Importar alunos revisados</button></div>
                 </article>
                 <article class="panel import-guide">
-                  <p class="eyebrow">CAMPOS DO MODELO</p><h3>Cadastro completo, sem excesso</h3><p>O modelo contempla identificação, contato autorizado, endereço, território e referência cadastral. Os campos específicos do Censo+ serão alinhados à sequência oficial antes da importação real.</p><div class="field-chips"><span>nome_completo</span><span>telefone_aluno</span><span>telefone_responsavel</span><span>canal_contato_autorizado</span><span>cep</span><span>bairro</span><span>zona_territorial</span><span>codigo_censo</span><span>pcd</span><span>data_cadastro</span></div><a href="docs/PRIVACIDADE-E-SEGURANCA.md" target="_blank" rel="noopener">Ler política de importação →</a></article>
+                  <p class="eyebrow">CAMPOS DO MODELO</p><h3>Ficha original, com mínimo necessário</h3><p>O CSV oficial preserva os 15 campos da planilha: turma, nome, sexo, idade, data de nascimento, endereço, bairro, contatos, PCD e data de cadastro. Para começar, basta o nome completo; os demais dados podem ser complementados depois.</p><div class="field-chips"><span>nome</span><span>data_nascimento</span><span>bairro</span><span>cidade</span><span>telefone</span><span>pcd</span><span>nome_responsavel</span><span>data_cadastro</span></div><a href="docs/POLITICA-DE-IMPORTACAO.md" target="_blank" rel="noopener">Ler política de importação →</a></article>
               </div>
               <div id="import-preview" class="hidden panel import-preview"></div>
             </section>
@@ -289,26 +291,30 @@
         <input name="studentId" type="hidden" />
         <input name="classId" type="hidden" />
         <fieldset id="censo-student-primary">
-          <legend>Cadastro do participante · Censo Esportivo</legend>
-          <p class="fieldset-note">Preencha os dados na mesma ordem da planilha oficial.</p>
+          <legend>Cadastro essencial · Censo Esportivo</legend>
+          <p class="fieldset-note">Para criar o vínculo, informe somente o nome completo. Os campos da ficha original podem ser completados a qualquer momento.</p>
           <div class="form-grid">
-            <label class="full-width">1. TURMA<input id="student-class-display" readonly placeholder="Turma selecionada" /></label>
-            <label class="full-width">2. Nome<input name="fullName" required maxlength="120" autocomplete="name" placeholder="Nome completo do participante" /></label>
-            <label>3. Sexo<select name="gender"><option value="">Selecione</option><option value="Feminino">Feminino</option><option value="Masculino">Masculino</option><option value="Outro">Outro</option><option value="Prefiro não informar">Prefiro não informar</option></select></label>
-            <label>4. Idade<input id="student-age-preview" type="text" readonly placeholder="Calculada pela data de nascimento" /></label>
-            <label>5. Data Nascimento<input name="birthDate" type="date" /></label>
-            <label class="full-width">6. Rua<input name="street" maxlength="140" autocomplete="street-address" /></label>
-            <label>7. Numero<input name="number" maxlength="20" /></label>
-            <label>8. Bairro<input name="neighborhood" maxlength="100" /></label>
-            <label>9. Cidade<input name="city" maxlength="100" autocomplete="address-level2" value="Votorantim" /></label>
-            <label>10. CEP<input name="postalCode" inputmode="numeric" maxlength="10" autocomplete="postal-code" /></label>
-            <label>11. Telefone<input name="phone" inputmode="tel" maxlength="20" autocomplete="tel" /></label>
-            <label>12. PCD<select name="pcdStatus"><option value="">Não informado</option><option value="Sim">Sim</option><option value="Não">Não</option></select></label>
-            <label class="full-width">13. Nome Responsavel<input name="guardianName" maxlength="120" /></label>
-            <label>14. Telefone Responsavel<input name="guardianPhone" inputmode="tel" maxlength="20" /></label>
-            <label>15. Data Cadastro<input name="registrationDate" type="date" /></label>
+            <label class="full-width">Turma<input id="student-class-display" readonly placeholder="Turma selecionada" /></label>
+            <label class="full-width">Nome completo<input name="fullName" required maxlength="120" autocomplete="name" placeholder="Nome completo do participante" /></label>
           </div>
+          <details class="progressive-details"><summary>Adicionar dados da ficha original (opcional)</summary><div class="form-grid progressive-grid">
+            <label>Sexo<select name="gender"><option value="">Selecione</option><option value="Feminino">Feminino</option><option value="Masculino">Masculino</option><option value="Outro">Outro</option><option value="Prefiro não informar">Prefiro não informar</option></select></label>
+            <label>Idade automática<input id="student-age-preview" type="text" readonly placeholder="Calculada pela data de nascimento" /></label>
+            <label>Data de nascimento<input name="birthDate" type="date" /></label>
+            <label>Bairro<input name="neighborhood" list="votorantim-neighborhoods" maxlength="100" placeholder="Selecione ou informe" /></label>
+            <label>Cidade<input name="city" maxlength="100" autocomplete="address-level2" value="Votorantim" /></label>
+            <label class="full-width">Rua<input name="street" maxlength="140" autocomplete="street-address" /></label>
+            <label>Número<input name="number" maxlength="20" /></label>
+            <label>CEP<input name="postalCode" inputmode="numeric" maxlength="10" autocomplete="postal-code" /><button id="lookup-postal-code" class="text-button" type="button">Sugerir bairro pelo CEP</button><small id="postal-code-help" class="fieldset-note">Consulta opcional; confirme o bairro antes de salvar.</small></label>
+            <label>Telefone<input name="phone" inputmode="tel" maxlength="20" autocomplete="tel" /></label>
+            <label>PCD<select name="pcdStatus"><option value="">Não informado</option><option value="Sim">Sim</option><option value="Não">Não</option></select></label>
+            <label class="full-width">Zona territorial aprovada<select id="student-territory-zone" name="territoryZoneId"><option value="">Nenhuma zona selecionada</option></select><small id="territory-field-help" class="fieldset-note">Opcional: selecione apenas uma zona aprovada pela gestão. O bairro continua sendo contado mesmo sem zona.</small></label>
+            <label class="full-width">Nome do responsável<input name="guardianName" maxlength="120" /></label>
+            <label>Telefone do responsável<input name="guardianPhone" inputmode="tel" maxlength="20" /></label>
+            <label>Data de cadastro<input name="registrationDate" type="date" /></label>
+          </div></details>
         </fieldset>
+        <datalist id="votorantim-neighborhoods"><option value="Altos de Votorantim"></option><option value="Barra Funda"></option><option value="Centro"></option><option value="Chave"></option><option value="Green Valley"></option><option value="Jardim Araújo"></option><option value="Jardim Icatu"></option><option value="Jardim Maria Lúcia"></option><option value="Jardim Novo Mundo"></option><option value="Jardim Paraíso"></option><option value="Jardim São Lucas"></option><option value="Jardim São Matheus"></option><option value="Jardim Simone"></option><option value="Jardim Tatiana"></option><option value="Jardim Toledo"></option><option value="Jardim Santo Antônio II"></option><option value="Nova Votorantim"></option><option value="Parque Bela Vista"></option><option value="Parque Jataí"></option><option value="Parque Santa Márcia"></option><option value="Parque Santos Dumont"></option><option value="Pro-Morar"></option><option value="Protestantes"></option><option value="Residencial Cristal"></option><option value="Rio Acima"></option><option value="Vila Amorim"></option><option value="Vila Angelo Vial"></option><option value="Vila Dominguinho"></option><option value="Vila Guilherme"></option><option value="Vila Pardini"></option><option value="Vila Pedroso"></option><option value="Vila Votocel"></option></datalist>
         <fieldset id="censo-student-contact" hidden>
           <input name="preferredName" /><input name="enrollmentCode" /><input name="studentPhone" />
           <input name="guardianEmail" /><input name="contactTarget" value="guardian" />
@@ -322,10 +328,8 @@
           <input name="censusIntegrationId" /><input name="censusReferenceDate" />
           <input name="censusReviewStatus" value="pending" />
           <input name="enrollmentStatus" value="Ativa" />
-          <select id="student-territory-zone" name="territoryZoneId"><option value="">Nenhuma zona selecionada</option></select>
           <input name="territorySector" readonly /><textarea name="notes"></textarea>
           <input name="territoryZoneName" type="hidden" /><input name="territorySource" type="hidden" />
-          <p id="territory-field-help" class="fieldset-note">Zona territorial não identificada.</p>
         </fieldset>
         <p id="student-form-message" class="form-message" role="status"></p>
         <div class="dialog-actions"><button class="button button-secondary" type="button" data-close-dialog="student-dialog">Cancelar</button><button class="button button-primary" type="submit">Salvar aluno</button></div>
@@ -373,6 +377,7 @@
       }, 12000);
     </script>
     <script src="firebase-config.js"></script>
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin="" defer></script>
     <script src="assets/censo-v2.js" defer></script>
     <script src="assets/censo-v3.js" defer></script>
     <script type="module" src="assets/app.js"></script>
