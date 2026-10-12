@@ -69,3 +69,7 @@ Este projeto evita prometer uso “ilimitado”. O plano sem custo do Cloud Fire
 ## Verificação local
 
 Como é uma aplicação estática, não há dependências para instalar. Use um servidor local simples (por exemplo, a prévia do seu editor) em vez de abrir o arquivo diretamente, pois módulos do Firebase precisam de contexto HTTP. Sem Firebase configurado, escolha **Explorar em modo local** para testar o fluxo vazio e o cadastro.
+
+
+## V3: Relatório semanal
+Selecionar **Semanal** no módulo de relatórios, escolher a semana ISO e gerar. Veja `docs/V3-ESTADO-REAL.md` para escopo e pendências.
