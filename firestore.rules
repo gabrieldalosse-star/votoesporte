@@ -108,7 +108,7 @@ service cloud.firestore {
 
     function validClass(data) {
       return data.keys().hasOnly([
-          'name', 'sport', 'ageGroup', 'location', 'schedule', 'notes', 'active',
+          'name', 'sport', 'ageGroup', 'location', 'territoryZoneId', 'schedule', 'notes', 'active',
           'teacherId', 'teacherName', 'createdAt', 'updatedAt'
         ]) &&
         data.keys().hasAll(['name', 'sport', 'active', 'teacherId', 'teacherName', 'updatedAt']) &&
@@ -120,6 +120,7 @@ service cloud.firestore {
         data.updatedAt is timestamp &&
         optionalText(data, 'ageGroup', 100) &&
         optionalText(data, 'location', 140) &&
+        optionalText(data, 'territoryZoneId', 160) &&
         optionalText(data, 'schedule', 180) &&
         optionalText(data, 'notes', 500);
     }
