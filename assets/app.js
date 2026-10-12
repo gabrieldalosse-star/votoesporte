@@ -27,7 +27,8 @@ import {
 } from "https://www.gstatic.com/firebasejs/11.0.2/firebase-firestore.js";
 
 const DEMO_STORE_KEY = "votorantim-esporte-chamada-demo-v1";
-const APP_VERSION = "7.0.0";
+const APP_VERSION = "7.1.0";
+const BUNDLED_TERRITORY_GEOJSON_URL = "data/setores_votorantim_4_setores_PRELIMINAR.geojson";
 const FIREBASE_REQUIRED_KEYS = ["apiKey", "authDomain", "projectId", "appId"];
 const PAGE_TITLES = {
   dashboard: ["VISÃO GERAL", "Bom trabalho!"],
@@ -88,7 +89,9 @@ const state = {
   user: null,
   profile: null,
   classes: [],
+  bundledTerritoryZones: [],
   territoryZones: [],
+  territoryFilter: "all",
   selectedTerritoryZoneId: null,
   selectedClassId: null,
   classDetailTab: "students",
@@ -124,6 +127,7 @@ async function bootstrap() {
   ui["attendance-date"].value = state.attendance.date;
   ui["report-month"].value = localMonth();
   renderHelp();
+  await loadBundledTerritoryZones();
 
   const configured = isFirebaseConfigured(window.FIREBASE_CONFIG);
   if (!configured) {
@@ -154,6 +158,26 @@ async function bootstrap() {
     ui["demo-sign-in"].classList.remove("hidden");
     showAuthMessage("Não foi possível iniciar o Firebase. Revise firebase-config.js.");
     finishLoading();
+  }
+}
+
+async function loadBundledTerritoryZones() {
+  try {
+    const response = await fetch(BUNDLED_TERRITORY_GEOJSON_URL, { cache: "force-cache" });
+    if (!response.ok) throw new Error("Arquivo territorial não encontrado");
+    const source = await response.json();
+    const sourceVersion = String(source?.metadata?.sourceVersion || "Censo Esportivo de Votorantim · setores preliminares aproximados · 2026");
+    state.bundledTerritoryZones = normalizeTerritoryFeatures(source, {
+      zoneNameProperty: "name",
+      sectorProperty: "sector",
+      sourceVersion,
+      importedFrom: "bundled-preliminary"
+    });
+  } catch (error) {
+    // The application remains usable when a static host is misconfigured. The
+    // map shows the municipal boundary and explains that the local layer failed.
+    console.warn("Não foi possível carregar os setores locais", error);
+    state.bundledTerritoryZones = [];
   }
 }
 
@@ -280,6 +304,11 @@ function wireStaticEvents() {
   ui["confirm-import"].addEventListener("click", importStudents);
   ui["open-territory-import"].addEventListener("click", openTerritoryImportDialog);
   ui["territory-import-form"].addEventListener("submit", importTerritoryZones);
+  ui["territory-sector-filter"].addEventListener("change", () => {
+    state.territoryFilter = ui["territory-sector-filter"].value || "all";
+    state.selectedTerritoryZoneId = null;
+    renderTerritory();
+  });
   ui["start-tour"].addEventListener("click", startTour);
   ui["tour-back"].addEventListener("click", () => advanceTour(-1));
   ui["tour-next"].addEventListener("click", () => advanceTour(1));
@@ -394,7 +423,7 @@ function subscribeClasses() {
 function subscribeTerritoryZones() {
   state.unsubscribers.territoryZones?.();
   if (state.isDemo) {
-    state.territoryZones = repository.getDemoTerritoryZones();
+    state.territoryZones = mergeTerritoryZones(state.bundledTerritoryZones, repository.getDemoTerritoryZones());
     afterTerritoryZonesChanged();
     return;
   }
@@ -402,13 +431,36 @@ function subscribeTerritoryZones() {
   state.unsubscribers.territoryZones = onSnapshot(
     query(collection(firebase.db, "territoryZones"), orderBy("name")),
     (snapshot) => {
-      state.territoryZones = snapshot.docs
-        .map((item) => ({ id: item.id, ...item.data() }))
-        .sort((a, b) => String(a.name || "").localeCompare(String(b.name || ""), "pt-BR"));
+      const remoteZones = snapshot.docs
+        .map((item) => hydrateTerritoryZone({ id: item.id, ...item.data() }))
+        .filter(Boolean);
+      state.territoryZones = mergeTerritoryZones(state.bundledTerritoryZones, remoteZones);
       afterTerritoryZonesChanged();
     },
     (error) => toast(friendlyFirebaseError(error), "error")
   );
+}
+
+function hydrateTerritoryZone(zone) {
+  if (!zone) return null;
+  if (zone.geometry && geometryPoints(zone.geometry).length) return zone;
+  if (typeof zone.geometryJson !== "string") return zone;
+  try {
+    const geometry = JSON.parse(zone.geometryJson);
+    return geometryPoints(geometry).length ? { ...zone, geometry } : null;
+  } catch {
+    console.warn("Uma zona territorial tem geometria inválida e foi ignorada", zone.id);
+    return null;
+  }
+}
+
+function mergeTerritoryZones(...collections) {
+  const zones = new Map();
+  collections.flat().forEach((zone) => {
+    const hydrated = hydrateTerritoryZone(zone);
+    if (hydrated?.id) zones.set(hydrated.id, hydrated);
+  });
+  return [...zones.values()].sort((a, b) => String(a.name || "").localeCompare(String(b.name || ""), "pt-BR"));
 }
 
 function afterTerritoryZonesChanged() {
@@ -489,30 +541,49 @@ function selectTerritoryZoneFromMap(zoneId) {
   });
 }
 
+function filteredTerritoryZones(zones = state.territoryZones) {
+  return state.territoryFilter === "all"
+    ? zones
+    : zones.filter((zone) => zone.sector === state.territoryFilter);
+}
+
+function renderTerritoryFilter(zones) {
+  const select = ui["territory-sector-filter"];
+  if (!select) return;
+  const sectors = [...new Set(zones.map((zone) => zone.sector).filter(Boolean))]
+    .sort((a, b) => a.localeCompare(b, "pt-BR"));
+  if (!sectors.includes(state.territoryFilter)) state.territoryFilter = "all";
+  select.innerHTML = `<option value="all">Todos os setores</option>${sectors.map((sector) => `<option value="${escapeAttr(sector)}">${escapeHtml(sector)}</option>`).join("")}`;
+  select.value = state.territoryFilter;
+  select.disabled = !sectors.length;
+}
+
 function renderTerritory() {
   if (!ui["territory-summary"]) return;
   const zones = state.territoryZones;
+  renderTerritoryFilter(zones);
+  const visibleZones = filteredTerritoryZones(zones);
   const counts = territoryStudentsByZone();
   const classified = Object.values(counts).reduce((sum, value) => sum + value, 0);
   const loaded = loadedStudents().length;
   const neighborhoods = new Set(loadedStudents().map((student) => censoText(student.neighborhood)).filter(Boolean));
   const sourceLabels = [...new Set(zones.map((zone) => zone.sourceVersion).filter(Boolean))];
   ui["territory-summary"].innerHTML = [
-    ["Zonas aprovadas", zones.length, zones.length ? "na camada atual" : "aguardando importação"],
+    ["Setores no mapa", zones.length, zones.length ? "camada preliminar local" : "arquivo local indisponível"],
     ["Cadastros por zona", classified, loaded ? `de ${loaded} aluno${loaded === 1 ? "" : "s"} carregado${loaded === 1 ? "" : "s"}` : "nenhum aluno carregado"],
     ["Bairros no censo", neighborhoods.size, neighborhoods.size ? "contagem agregada no painel" : "aguardando bairro no cadastro"],
-    ["Fonte territorial", sourceLabels.length ? "Validar" : "Pendente", sourceLabels.length ? "verifique versão e licença" : "sem geometria publicada"]
+    ["Fonte territorial", sourceLabels.length ? "Preliminar" : "Pendente", sourceLabels.length ? "aproximação; não é limite oficial" : "sem geometria publicada"]
   ].map(([label, value, note]) => `<article class="panel stat-card territory-stat"><div class="stat-label"><span>${escapeHtml(String(label))}</span><i class="stat-icon" aria-hidden="true">⌖</i></div><strong>${escapeHtml(String(value))}</strong><small>${escapeHtml(String(note))}</small></article>`).join("");
-  ui["territory-layer-status"].textContent = zones.length ? `${zones.length} zona${zones.length === 1 ? "" : "s"}` : "Sem camada";
+  ui["territory-layer-status"].textContent = zones.length ? `${visibleZones.length}/${zones.length} setores` : "Sem camada";
   ui["territory-layer-status"].classList.toggle("inactive", !zones.length);
-  ui["territory-map"].innerHTML = renderTerritoryMap(zones, counts);
-  mountOfficialTerritoryMap(zones, counts);
-  ui["territory-zone-list"].innerHTML = zones.length ? zones.map((zone) => {
+  ui["territory-map"].innerHTML = renderTerritoryMap(visibleZones, counts);
+  mountOfficialTerritoryMap(visibleZones, counts);
+  ui["territory-zone-list"].innerHTML = visibleZones.length ? visibleZones.map((zone) => {
     const count = counts[zone.id] || 0;
     const classCount = classesForTerritoryZone(zone).length;
     const selected = zone.id === state.selectedTerritoryZoneId;
     return `<button class="territory-zone-row ${selected ? "selected" : ""}" data-action="select-territory-zone" data-id="${escapeAttr(zone.id)}" type="button"><span class="zone-swatch" aria-hidden="true"></span><span><strong>${escapeHtml(zone.name || "Zona sem nome")}</strong><small>${escapeHtml(zone.sector || "Setor não informado")} · ${classCount} núcleo${classCount === 1 ? "" : "s"}</small></span><b>${count}</b></button>`;
-  }).join("") : `<div class="territory-empty"><span aria-hidden="true">⌖</span><strong>Camada ainda não importada</strong><p>${state.isAdmin ? "Use o botão acima para importar um GeoJSON aprovado." : "Peça à gestão a importação de uma camada aprovada."}</p></div>`;
+  }).join("") : `<div class="territory-empty"><span aria-hidden="true">⌖</span><strong>Nenhum setor neste filtro</strong><p>Selecione “Todos os setores” para visualizar a camada preliminar completa.</p></div>`;
 }
 
 function renderTerritoryMap(zones, counts) {
@@ -1323,7 +1394,8 @@ function normalizeTerritoryFeatures(source, values) {
     const geometry = feature?.geometry;
     if (!name) throw new Error(`A zona da linha ${index + 1} não tem nome.`);
     if (!geometryPoints(geometry).length) throw new Error(`A zona “${name}” não possui polígono válido em EPSG:4326.`);
-    if (JSON.stringify(geometry).length > 750000) throw new Error(`A geometria da zona “${name}” é grande demais para um documento Firestore.`);
+    const geometryJson = JSON.stringify(geometry);
+    if (geometryJson.length > 750000) throw new Error(`A geometria da zona “${name}” é grande demais para um documento Firestore.`);
     let id = `zone-${safeId(name)}`;
     let suffix = 2;
     while (seen.has(id)) { id = `zone-${safeId(name)}-${suffix}`; suffix += 1; }
@@ -1333,9 +1405,12 @@ function normalizeTerritoryFeatures(source, values) {
       name: name.slice(0, 120),
       sector: sector.slice(0, 100),
       sourceVersion: String(values.sourceVersion).trim().slice(0, 180),
+      // Firestore rejects nested arrays. GeoJSON coordinates are therefore
+      // serialized for storage and rehydrated only when the map needs them.
       geometry,
+      geometryJson,
       geometryType: geometry.type,
-      importedFrom: "geojson-approved",
+      importedFrom: values.importedFrom || "geojson-approved",
       importedAtClient: new Date().toISOString()
     };
   });
@@ -1900,16 +1975,18 @@ const repository = {
     if (state.isDemo) {
       const data = demoData();
       data.territoryZones ||= {};
-      zones.forEach(({ id, ...zone }) => {
-        data.territoryZones[id] = { ...(data.territoryZones[id] || {}), ...zone, updatedAt: new Date().toISOString() };
+      zones.forEach(({ id, geometry, ...zone }) => {
+        data.territoryZones[id] = { ...zone, updatedAt: new Date().toISOString() };
       });
       writeDemoData(data);
       subscribeTerritoryZones();
       return;
     }
     const batch = writeBatch(firebase.db);
-    zones.forEach(({ id, ...zone }) => {
-      batch.set(doc(firebase.db, "territoryZones", id), { ...zone, updatedAt: serverTimestamp() }, { merge: true });
+    zones.forEach(({ id, geometry, ...zone }) => {
+      // Replace the document so a legacy `geometry` field cannot remain beside
+      // `geometryJson` and fail the strict Firestore rule validation.
+      batch.set(doc(firebase.db, "territoryZones", id), { ...zone, updatedAt: serverTimestamp() });
     });
     await batch.commit();
   },
