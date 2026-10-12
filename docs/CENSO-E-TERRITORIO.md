@@ -59,13 +59,13 @@ O painel aceita um GeoJSON `FeatureCollection` com polígonos de bairros, setore
 }
 ```
 
-Use o arquivo `data/votorantim-zonas.example.geojson` como modelo. A importação é permitida apenas para administrador e atualiza zonas por nome; ela não apaga a camada anterior automaticamente.
+O pacote já inclui `data/setores_votorantim_4_setores_PRELIMINAR.geojson`. A aplicação o carrega automaticamente para mostrar e filtrar os setores Oeste, Centro, Sul e Leste; não há upload nem escrita no Firebase para essa camada local. Use `data/votorantim-zonas.example.geojson` como modelo para uma futura camada validada. A importação administrativa atualiza zonas por nome e não apaga a camada anterior automaticamente.
 
 Não envie o endereço de aluno a geocodificadores externos e não importe pontos de moradia. A associação do aluno à zona é manual até haver uma regra territorial formalmente validada.
 
 ## Fontes e validação
 
-O portal de Dados Abertos de Votorantim não disponibiliza, neste momento, uma malha pública de bairros ou setores pronta em GeoJSON. O Município divulga nomes de bairros em seus serviços e mapas de zoneamento em PDF, mas esses PDFs não devem ser vetorizados nem tratados como setor de atendimento sem validação. Por isso, o aplicativo mostra a contagem por bairro no censo e só desenha polígonos depois da importação de uma camada oficial ou formalmente aprovada.
+O portal de Dados Abertos de Votorantim não disponibiliza, neste momento, uma malha pública de bairros ou setores pronta em GeoJSON. O Município divulga nomes de bairros em seus serviços e mapas de zoneamento em PDF, mas esses PDFs não devem ser vetorizados nem tratados como setor de atendimento sem validação. Por isso, os quatro polígonos incluídos neste pacote são explicitamente **preliminares, aproximados e não oficiais**. Eles servem apenas para uma visualização inicial do Censo, não para zoneamento, decisões administrativas, CEP ou delimitação de bairros, e devem ser substituídos por fonte validada.
 
 O Google Maps pode ser usado pela equipe como **referência visual** para conferir o nome retornado por um CEP e a coerência de uma divisão proposta. Não copie nem extraia sua cartografia para o repositório ou para o GeoJSON: uma camada desenhada a partir dessa conferência deve ser marcada como operacional/provisória, revisada pela gestão e substituída assim que houver fonte territorial licenciada ou municipal.
 
@@ -80,4 +80,4 @@ Uma malha do IBGE pode apoiar a análise do Censo, mas não substitui setores mu
 
 ## Regras do Firestore
 
-Publique `firestore.rules` depois de revisar. A coleção `territoryZones` é legível apenas por pessoas autenticadas e gravável apenas por administradores provisionados em `adminUsers`. Cadastros de alunos seguem protegidos dentro de cada turma.
+Publique `firestore.rules` depois de revisar. A coleção `territoryZones` é legível apenas por pessoas autenticadas e gravável apenas por administradores provisionados em `adminUsers`. Para evitar o erro do Firestore com arrays aninhados, geometrias enviadas pelo importador são armazenadas como texto em `geometryJson` e reconstituídas apenas no navegador para desenhar o mapa. Cadastros de alunos seguem protegidos dentro de cada turma.
