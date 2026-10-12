@@ -1,3 +1,7 @@
+# Censo Esportivo de Votorantim V4
+
+Leia `docs/V4-ALTERACOES.md` antes de substituir o aplicativo. A exclusão administrativa é irreversível.
+
 # Votorantim Esporte & Censo+ · Chamada
 
 MVP estático para professores registrarem presença, organizarem turmas e gerarem relatórios de acompanhamento na Rede Esportiva de Votorantim.

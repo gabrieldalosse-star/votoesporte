@@ -5,10 +5,10 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta
       name="description"
-      content="Plataforma de chamada, acompanhamento Censo+ e território da Rede Esportiva de Votorantim."
+      content="Sistema integrado de censo esportivo, matrículas, cobertura territorial e gestão de atividades de Votorantim."
     />
     <meta name="theme-color" content="#063b79" />
-    <title>Votorantim Esporte &amp; Censo+ · Chamada</title>
+    <title>Censo Esportivo de Votorantim · Gestão Municipal</title>
     <link rel="icon" href="assets/favicon.svg" type="image/svg+xml" />
     <link rel="stylesheet" href="assets/styles.css" />
   </head>
@@ -17,10 +17,10 @@
 
     <div id="app-shell" class="app-shell">
       <section id="loading-screen" class="loading-screen" aria-live="polite">
-        <div class="loading-mark municipal-mark" aria-hidden="true"><img src="assets/votorantim-esporte.svg" alt="" /></div>
+        <div class="loading-mark municipal-mark" aria-hidden="true"><img src="assets/brasao-votorantim-original.jpg" alt="" /></div>
         <div>
           <p class="eyebrow">Rede Esportiva de Votorantim</p>
-          <h1>Preparando a chamada</h1>
+          <h1>Preparando o Censo Esportivo</h1>
           <p>Carregando um ambiente seguro para professores.</p>
         </div>
       </section>
@@ -28,15 +28,15 @@
       <section id="auth-screen" class="auth-screen hidden" aria-labelledby="auth-title">
         <div class="auth-hero">
           <div class="brand-lockup">
-            <div class="brand-mark municipal-mark" aria-hidden="true"><img src="assets/votorantim-esporte.svg" alt="" /></div>
+            <div class="brand-mark municipal-mark" aria-hidden="true"><img src="assets/brasao-votorantim-original.jpg" alt="" /></div>
             <div>
               <p class="eyebrow">REDE ESPORTIVA</p>
               <p class="brand-name">Votorantim</p>
             </div>
           </div>
           <div class="hero-copy">
-            <span class="kicker">Chamada · Censo+ · Território</span>
-            <h1 id="auth-title">A chamada, os dados e os avanços da sua turma em um só lugar.</h1>
+            <span class="kicker">Censo Esportivo · Turmas · Frequência</span>
+            <h1 id="auth-title">O Censo Esportivo de Votorantim em um só lugar.</h1>
             <p>
               Registre presenças, acompanhe cada aluno e gere relatórios claros — com dados protegidos, território agregado e acesso individual por professor.
             </p>
@@ -74,16 +74,16 @@
       <div id="workspace" class="workspace hidden">
         <aside id="sidebar" class="sidebar" aria-label="Navegação principal">
           <div class="sidebar-brand">
-            <div class="brand-mark small municipal-mark" aria-hidden="true"><img src="assets/votorantim-esporte.svg" alt="" /></div>
+            <div class="brand-mark small municipal-mark" aria-hidden="true"><img src="assets/brasao-votorantim-original.jpg" alt="" /></div>
             <div><strong>Votorantim</strong><span>Rede Esportiva</span></div>
           </div>
           <nav class="main-nav">
-            <button class="nav-item active" data-view="dashboard" type="button"><span aria-hidden="true">◫</span> Censo esportivo</button>
+            <button class="nav-item active" data-view="dashboard" type="button"><span aria-hidden="true">◫</span> Visão geral do Censo</button>
             <button class="nav-item" data-view="classes" type="button"><span aria-hidden="true">◒</span> Turmas e matrículas</button>
-            <button class="nav-item" data-view="attendance" type="button"><span aria-hidden="true">✓</span> Chamada · adicional</button>
+            <button class="nav-item" data-view="attendance" type="button"><span aria-hidden="true">✓</span> Frequência das turmas</button>
             <button class="nav-item" data-view="reports" type="button"><span aria-hidden="true">↗</span> Relatórios</button>
-            <button class="nav-item" data-view="territory" type="button"><span aria-hidden="true">⌖</span> Censo+ e território</button>
-            <button class="nav-item" data-view="import" type="button"><span aria-hidden="true">⇩</span> Importar alunos</button>
+            <button class="nav-item" data-view="territory" type="button"><span aria-hidden="true">⌖</span> Território e bairros</button>
+            <button class="nav-item" data-view="import" type="button"><span aria-hidden="true">⇩</span> Importação de cadastros</button>
             <button id="admin-nav" class="nav-item hidden" data-view="admin" type="button"><span aria-hidden="true">◈</span> Gestão</button>
           </nav>
           <div class="sidebar-bottom">
@@ -101,7 +101,7 @@
             </div>
             <div class="topbar-actions">
               <span id="mode-badge" class="mode-badge hidden">Modo local</span>
-              <button id="quick-attendance" class="button button-compact button-primary" type="button">+ Nova chamada</button>
+              <button id="quick-attendance" class="button button-compact button-primary" type="button">+ Registrar frequência</button>
               <button id="profile-menu" class="profile-chip" type="button" aria-haspopup="true" aria-expanded="false">
                 <span id="profile-avatar" class="avatar">?</span>
                 <span id="profile-name">Perfil</span>
@@ -125,17 +125,17 @@
                 <button id="dashboard-add-class" class="button button-primary" type="button">+ Cadastrar turma</button>
               </div>
               <div class="official-brand-row"><img src="assets/secretaria-esportes-original.jpg" alt="Logotipo original da Secretaria de Esportes"/><img src="assets/brasao-votorantim-original.jpg" alt="Brasão original da Prefeitura de Votorantim"/></div><div id="dashboard-stats" class="stats-grid"></div><p class="censo-count-note">Indicadores calculados sobre as turmas e cadastros disponíveis ao perfil conectado. Participantes únicos estimados por nome e nascimento quando não há identificador global; não equivalem a um cadastro municipal deduplicado.</p>
-              <div class="censo-shortcuts"><button type="button" class="button button-primary" data-view="classes">Turmas e participantes</button><button type="button" class="button button-secondary" data-view="territory">Território</button><button type="button" class="button button-secondary" data-view="reports">Relatórios</button><button type="button" class="button button-secondary" data-view="attendance">Chamada</button></div><div class="dashboard-grid">
+              <section class="censo-analytics" aria-label="Análise do censo por bairro e atividade"><div class="censo-analytics-head"><div><span class="kicker">DADOS DO TERRITÓRIO</span><h3>Quem o esporte atende em Votorantim</h3><p>Os gráficos se atualizam conforme você cadastra participantes e seleciona um bairro. Nenhum dado é estimado ou inventado.</p></div><label class="censo-filter-label">Filtrar bairro<select id="censo-neighborhood-filter"><option value="">Todos os bairros</option></select></label></div><div id="censo-filter-summary" class="censo-filter-summary" aria-live="polite"></div><div class="censo-chart-grid"><article class="panel censo-chart-card"><h4>Participantes por bairro</h4><div id="censo-chart-neighborhood" class="censo-bars"></div></article><article class="panel censo-chart-card"><h4>Participações por atividade</h4><div id="censo-chart-activity" class="censo-bars"></div></article><article class="panel censo-chart-card"><h4>Faixas etárias</h4><div id="censo-chart-age" class="censo-bars"></div></article><article class="panel censo-chart-card"><h4>Distribuição por sexo</h4><div id="censo-chart-gender" class="censo-bars"></div></article></div><p class="censo-count-note">Uma pessoa pode participar de várias atividades. Gráficos de pessoas usam deduplicação aproximada por nome e nascimento; atividades contabilizam vínculos por turma. Dados restritos ao perfil conectado.</p></section><div class="censo-shortcuts"><button type="button" class="button button-primary" data-view="classes">Turmas e participantes</button><button type="button" class="button button-secondary" data-view="territory">Território</button><button type="button" class="button button-secondary" data-view="reports">Relatórios</button><button type="button" class="button button-secondary" data-view="attendance">Frequência</button></div><div class="dashboard-grid">
                 <article class="panel next-action-panel">
                   <div class="panel-heading">
-                    <div><p class="eyebrow">ORGANIZAÇÃO</p><h3>Turmas em acompanhamento</h3></div>
+                    <div><p class="eyebrow">ORGANIZAÇÃO</p><h3>Turmas cadastradas</h3></div>
                     <span class="pulse-dot" aria-label="Ao vivo"></span>
                   </div>
                   <div id="today-classes" class="today-list"></div>
                 </article>
                 <article class="panel progress-panel">
-                  <div class="panel-heading"><div><p class="eyebrow">ACOMPANHAMENTO</p><h3>Frequência complementar</h3></div><button class="text-button" data-view="reports" type="button">Ver relatório</button></div>
-                  <div id="dashboard-progress" class="progress-empty">Ainda não há chamadas concluídas neste período.</div>
+                  <div class="panel-heading"><div><p class="eyebrow">ACOMPANHAMENTO</p><h3>Frequência registrada</h3></div><button class="text-button" data-view="reports" type="button">Ver relatório</button></div>
+                  <div id="dashboard-progress" class="progress-empty">Ainda não há registros de frequência neste período.</div>
                 </article>
               </div>
               <article class="panel privacy-banner">
@@ -147,7 +147,7 @@
 
             <section id="view-classes" class="view" aria-labelledby="classes-title">
               <div class="page-intro">
-                <div><span class="kicker">ORGANIZAÇÃO</span><h2 id="classes-title">Minhas turmas</h2><p>Cadastre e acompanhe cada grupo com uma visão clara de alunos e histórico.</p></div>
+                <div><span class="kicker">ORGANIZAÇÃO</span><h2 id="classes-title">Turmas do Censo</h2><p>Cadastre e acompanhe cada grupo com uma visão clara de alunos e histórico.</p></div>
                 <button id="add-class" class="button button-primary" type="button">+ Cadastrar turma</button>
               </div>
               <div id="classes-content" class="classes-layout"></div>
@@ -155,8 +155,8 @@
 
             <section id="view-attendance" class="view" aria-labelledby="attendance-title">
               <div class="page-intro attendance-intro">
-                <div><span class="kicker">PRESENÇA</span><h2 id="attendance-title">Fazer chamada</h2><p>Marque a turma, revise e salve. A chamada fica vinculada à data escolhida.</p></div>
-                <div class="save-attendance-area"><span id="attendance-save-state" class="save-state">Sem alterações</span><button id="save-attendance" class="button button-primary" type="button">Salvar chamada</button></div>
+                <div><span class="kicker">PRESENÇA</span><h2 id="attendance-title">Registro de frequência</h2><p>Marque a turma, revise e salve. A chamada fica vinculada à data escolhida.</p></div>
+                <div class="save-attendance-area"><span id="attendance-save-state" class="save-state">Sem alterações</span><button id="save-attendance" class="button button-primary" type="button">Salvar frequência</button></div>
               </div>
               <article class="panel attendance-controls">
                 <label>Turma<select id="attendance-class" aria-label="Selecionar turma"></select></label>
@@ -183,21 +183,21 @@
                 <button id="generate-report" class="button button-primary" type="button">Gerar relatório</button>
               </article>
               <div id="report-print-area">
-                <div id="report-empty" class="empty-state panel"><span aria-hidden="true">↗</span><h3>Seu relatório começa quando houver chamadas</h3><p>Selecione o período e gere uma visão consolidada. Nenhum dado de aluno será incluído até que você o cadastre.</p></div>
+                <div id="report-empty" class="empty-state panel"><span aria-hidden="true">↗</span><h3>Relatórios de frequência disponíveis após os registros</h3><p>Selecione o período e gere uma visão consolidada. Nenhum dado de aluno será incluído até que você o cadastre.</p></div>
                 <div id="report-content" class="hidden"></div>
               </div>
             </section>
 
             <section id="view-territory" class="view" aria-labelledby="territory-title">
               <div class="page-intro territory-intro">
-                <div><span class="kicker">CENSO+ E TERRITÓRIO</span><h2 id="territory-title">Território que orienta, sem expor</h2><p>Associe alunos apenas a uma zona aprovada e acompanhe indicadores agregados. Endereços e pontos de residência nunca aparecem no mapa.</p></div>
+                <div><span class="kicker">TERRITÓRIO E COBERTURA</span><h2 id="territory-title">Território que orienta, sem expor</h2><p>Associe alunos apenas a uma zona aprovada e acompanhe indicadores agregados. Endereços e pontos de residência nunca aparecem no mapa.</p></div>
                 <button id="open-territory-import" class="button button-primary hidden" type="button">Importar camada de zonas</button>
               </div>
               <div id="territory-summary" class="territory-summary"></div>
               <div class="territory-layout">
                 <article class="panel territory-map-panel">
                   <div class="panel-heading"><div><p class="eyebrow">MAPA OPERACIONAL</p><h3>Camada territorial aprovada</h3></div><span id="territory-layer-status" class="pill">Sem camada</span></div>
-                  <div id="territory-map" class="territory-map" role="region" aria-label="Mapa de zonas territoriais aprovadas"></div>
+                  <div class="official-map-box"><iframe title="Mapa geográfico de Votorantim — OpenStreetMap" loading="lazy" referrerpolicy="no-referrer" src="https://www.openstreetmap.org/export/embed.html?bbox=-47.52%2C-23.69%2C-47.31%2C-23.49&amp;layer=mapnik" style="width:100%;height:370px;border:0;border-radius:14px" ></iframe><p><a href="https://www.openstreetmap.org/#map=12/-23.56/-47.43" target="_blank" rel="noopener">Abrir mapa de Votorantim</a> · Cartografia © OpenStreetMap contributors. Mapa de ruas; não representa setores censitários nem zonas urbanísticas.</p><p><a href="https://geoftp.ibge.gov.br/cartas_e_mapas/mapas_para_fins_de_levantamentos_estatisticos/censo_demografico_2022/mapas_municipais_estatisticos/SP/votorantim_3557006/votorantim_3557006_mme_a1.pdf" target="_blank" rel="noopener">Consultar mapa oficial de setores censitários — IBGE 2022</a></p></div><div id="territory-map" class="territory-map" role="region" aria-label="Camadas territoriais aprovadas"></div>
                   <p class="territory-disclaimer">A classificação é feita por zona, não por endereço. Importe somente uma camada oficial ou aprovada pela gestão.</p>
                 </article>
                 <article class="panel territory-zone-panel">
@@ -207,24 +207,24 @@
                 </article>
               </div>
               <article class="panel census-guidance">
-                <div><span aria-hidden="true">◌</span><h3>Pronto para a sua sequência Censo+</h3><p>O cadastro já separa identificação, contato, território e referência de censo. O formulário usa como referência os cabeçalhos da planilha Censo Willian; o Censo – Teste orienta a separação de locais, atividades e turmas.</p></div>
+                <div><span aria-hidden="true">◌</span><h3>Cadastros e território integrados</h3><p>O cadastro já separa identificação, contato, território e referência de censo. O formulário usa como referência os cabeçalhos da planilha Censo Willian; o Censo – Teste orienta a separação de locais, atividades e turmas.</p></div>
                 <div class="census-guidance-tags"><span>sem geocodificação de endereço</span><span>sem pinos individuais</span><span>relatórios agregados</span></div>
               </article>
             </section>
 
             <section id="view-import" class="view" aria-labelledby="import-title">
               <div class="page-intro">
-                <div><span class="kicker">MIGRAÇÃO ASSISTIDA</span><h2 id="import-title">Importar alunos</h2><p>Use o modelo de planilha para trazer alunos de uma turma de forma controlada e revisável.</p></div>
+                <div><span class="kicker">MIGRAÇÃO ASSISTIDA</span><h2 id="import-title">Importação de cadastros</h2><p>Use o modelo de planilha para trazer alunos de uma turma de forma controlada e revisável.</p></div>
                 <a class="button button-secondary" href="data/modelo-importacao-alunos.csv" download>Baixar modelo CSV</a>
               </div>
               <div class="import-grid">
                 <article class="panel import-flow">
                   <div class="step-number">1</div><div><h3>Escolha a turma</h3><p>Os dados serão armazenados somente dentro da turma selecionada.</p><select id="import-class" aria-label="Turma para importação"></select></div>
                   <div class="step-number">2</div><div><h3>Envie o arquivo CSV</h3><p>O modelo já traz os campos reconhecidos pela plataforma.</p><label class="file-drop"><input id="import-file" type="file" accept=".csv,text/csv" /><span aria-hidden="true">⇧</span><strong>Selecionar arquivo CSV</strong><small>Nenhum arquivo selecionado</small></label></div>
-                  <div class="step-number">3</div><div><h3>Revise antes de salvar</h3><p id="import-summary">Ainda não há linhas para importar.</p><button id="confirm-import" class="button button-primary" type="button" disabled>Importar alunos revisados</button></div>
+                  <div class="step-number">3</div><div><h3>Revise antes de salvar</h3><p id="import-summary">Ainda não há linhas para importar.</p><button id="confirm-import" class="button button-primary" type="button" disabled>Importação de cadastros revisados</button></div>
                 </article>
                 <article class="panel import-guide">
-                  <p class="eyebrow">CAMPOS DO MODELO</p><h3>Cadastro completo, sem excesso</h3><p>O modelo contempla identificação, contato autorizado, endereço, território e referência escolar. Os campos específicos do Censo+ serão alinhados à sequência oficial antes da importação real.</p><div class="field-chips"><span>nome_completo</span><span>telefone_aluno</span><span>telefone_responsavel</span><span>canal_contato_autorizado</span><span>cep</span><span>bairro</span><span>zona_territorial</span><span>codigo_censo</span><span>pcd</span><span>data_cadastro</span></div><a href="docs/PRIVACIDADE-E-SEGURANCA.md" target="_blank" rel="noopener">Ler política de importação →</a></article>
+                  <p class="eyebrow">CAMPOS DO MODELO</p><h3>Cadastro completo, sem excesso</h3><p>O modelo contempla identificação, contato autorizado, endereço, território e referência cadastral. Os campos específicos do Censo+ serão alinhados à sequência oficial antes da importação real.</p><div class="field-chips"><span>nome_completo</span><span>telefone_aluno</span><span>telefone_responsavel</span><span>canal_contato_autorizado</span><span>cep</span><span>bairro</span><span>zona_territorial</span><span>codigo_censo</span><span>pcd</span><span>data_cadastro</span></div><a href="docs/PRIVACIDADE-E-SEGURANCA.md" target="_blank" rel="noopener">Ler política de importação →</a></article>
               </div>
               <div id="import-preview" class="hidden panel import-preview"></div>
             </section>
@@ -240,7 +240,7 @@
                 <article><span>01</span><h3>Confirme seu perfil</h3><p>Use seu nome profissional e mantenha seus dados de acesso atualizados.</p></article>
                 <article><span>02</span><h3>Crie uma turma</h3><p>Informe modalidade, local e horário para facilitar sua rotina.</p></article>
                 <article><span>03</span><h3>Cadastre ou importe</h3><p>Adicione alunos um a um ou revise um CSV antes de salvar.</p></article>
-                <article><span>04</span><h3>Registre e acompanhe</h3><p>Salve a chamada e gere relatórios de evolução no fim do período.</p></article>
+                <article><span>04</span><h3>Registre frequência</h3><p>Registre a presença nas atividades e acompanhe os indicadores do Censo.</p></article>
               </div>
               <div id="help-accordions" class="accordion-group"></div>
             </section>
@@ -288,10 +288,45 @@
         <div class="dialog-heading"><div><p class="eyebrow">ALUNO</p><h2 id="student-dialog-title">Cadastrar aluno</h2></div><button class="icon-button dialog-close" type="button" data-close-dialog="student-dialog" aria-label="Fechar">×</button></div>
         <input name="studentId" type="hidden" />
         <input name="classId" type="hidden" />
-        <fieldset id="censo-student-primary"><legend>Cadastro do participante · Censo Esportivo</legend><p class="fieldset-note">Estrutura inspirada no cadastro de alunos do Censo Willian. Nenhum aluno da planilha foi importado.</p><div class="form-grid"><label class="full-width">Nome completo<input name="fullName" required maxlength="120" autocomplete="name" /></label><label>Nome social / como prefere ser chamado<input name="preferredName" maxlength="120" /></label><label>Código de matrícula<input name="enrollmentCode" maxlength="80" /></label><label>Data de nascimento<input name="birthDate" type="date" /></label><label>Idade em 2026 (calculada)<input id="student-age-preview" type="text" readonly placeholder="Informe o nascimento" /></label><label>PCD (informação restrita)<select name="pcdStatus"><option value="">Não informado</option><option value="Sim">Sim</option><option value="Não">Não</option></select></label><label>Data do cadastro<input name="registrationDate" type="date" /></label><label>Sexo / gênero (opcional)<select name="gender"><option value="">Não informar</option><option value="Feminino">Feminino</option><option value="Masculino">Masculino</option><option value="Outro">Outro</option><option value="Prefiro não informar">Prefiro não informar</option></select></label></div></fieldset>
-        <fieldset id="censo-student-contact"><legend>Campos auxiliares (não exibidos no cadastro principal)</legend><div class="form-grid"><label>Nome do responsável<input name="guardianName" maxlength="120" /></label><label>Telefone do responsável<input name="guardianPhone" inputmode="tel" maxlength="20" autocomplete="tel" /></label><label>Telefone do aluno <small>(somente se autorizado)</small><input name="studentPhone" inputmode="tel" maxlength="20" autocomplete="tel" /></label><label>Telefone alternativo / legado<input name="phone" inputmode="tel" maxlength="20" autocomplete="tel" /></label><label>E-mail do responsável<input name="guardianEmail" type="email" maxlength="120" /></label><label>Contato preferencial<select name="contactTarget"><option value="guardian">Responsável</option><option value="student">Aluno</option><option value="alternate">Telefone alternativo</option></select></label><label>Canal autorizado<select name="contactPermission"><option value="not_informed">Não informado</option><option value="whatsapp">WhatsApp autorizado</option><option value="call">Ligação autorizada</option><option value="both">WhatsApp e ligação autorizados</option><option value="no_contact">Não autoriza contato</option></select></label><label>Data do consentimento<input name="contactConsentDate" type="date" /></label></div><p class="fieldset-note">Os botões de WhatsApp e ligação só aparecem após a indicação do canal autorizado e sempre exigem clique manual do professor.</p></fieldset>
-        <fieldset id="censo-student-address"><legend>Endereço</legend><div class="form-grid"><label>CEP<input name="postalCode" inputmode="numeric" maxlength="10" autocomplete="postal-code" /></label><label>UF<input name="state" maxlength="2" autocomplete="address-level1" /></label><label class="full-width">Logradouro<input name="street" maxlength="140" autocomplete="street-address" /></label><label>Número<input name="number" maxlength="20" /></label><label>Complemento<input name="complement" maxlength="80" /></label><label>Bairro<input name="neighborhood" maxlength="100" /></label><label>Cidade<input name="city" maxlength="100" autocomplete="address-level2" /></label></div></fieldset>
-        <fieldset id="censo-student-extra"><legend>Dados auxiliares do sistema</legend><div class="form-grid"><label>Escola / unidade de referência<input name="school" maxlength="140" /></label><label>Turno<select name="shift"><option value="">Não informar</option><option>Manhã</option><option>Tarde</option><option>Noite</option><option>Integral</option></select></label><label>Código externo / censo<input name="censusCode" maxlength="80" /></label><label>Identificador da integração Censo+<input name="censusIntegrationId" maxlength="80" /></label><label>Referência da coleta<input name="censusReferenceDate" type="date" /></label><label>Status da revisão Censo+<select name="censusReviewStatus"><option value="pending">Aguardando sequência oficial</option><option value="reviewed">Revisado</option><option value="not_applicable">Não se aplica</option></select></label><label>Situação da matrícula<select name="enrollmentStatus"><option value="Ativa">Ativa</option><option value="Pendente">Pendente</option><option value="Inativa">Inativa</option></select></label><label>Zona territorial<select id="student-territory-zone" name="territoryZoneId"><option value="">Nenhuma zona selecionada</option></select></label><label>Setor / zona<input name="territorySector" maxlength="100" readonly placeholder="Preenchido pela camada aprovada" /></label><label class="full-width">Observações operacionais<textarea name="notes" maxlength="500" rows="3" placeholder="Evite registrar informação sensível sem autorização e base legal."></textarea></label></div><input name="territoryZoneName" type="hidden" /><input name="territorySource" type="hidden" /><p id="territory-field-help" class="fieldset-note">A seleção é manual até a gestão importar uma camada territorial aprovada. Não há geocodificação de endereço.</p></fieldset>
+        <fieldset id="censo-student-primary">
+          <legend>Cadastro do participante · Censo Esportivo</legend>
+          <p class="fieldset-note">Preencha os dados na mesma ordem da planilha oficial.</p>
+          <div class="form-grid">
+            <label class="full-width">1. TURMA<input id="student-class-display" readonly placeholder="Turma selecionada" /></label>
+            <label class="full-width">2. Nome<input name="fullName" required maxlength="120" autocomplete="name" placeholder="Nome completo do participante" /></label>
+            <label>3. Sexo<select name="gender"><option value="">Selecione</option><option value="Feminino">Feminino</option><option value="Masculino">Masculino</option><option value="Outro">Outro</option><option value="Prefiro não informar">Prefiro não informar</option></select></label>
+            <label>4. Idade<input id="student-age-preview" type="text" readonly placeholder="Calculada pela data de nascimento" /></label>
+            <label>5. Data Nascimento<input name="birthDate" type="date" /></label>
+            <label class="full-width">6. Rua<input name="street" maxlength="140" autocomplete="street-address" /></label>
+            <label>7. Numero<input name="number" maxlength="20" /></label>
+            <label>8. Bairro<input name="neighborhood" maxlength="100" /></label>
+            <label>9. Cidade<input name="city" maxlength="100" autocomplete="address-level2" value="Votorantim" /></label>
+            <label>10. CEP<input name="postalCode" inputmode="numeric" maxlength="10" autocomplete="postal-code" /></label>
+            <label>11. Telefone<input name="phone" inputmode="tel" maxlength="20" autocomplete="tel" /></label>
+            <label>12. PCD<select name="pcdStatus"><option value="">Não informado</option><option value="Sim">Sim</option><option value="Não">Não</option></select></label>
+            <label class="full-width">13. Nome Responsavel<input name="guardianName" maxlength="120" /></label>
+            <label>14. Telefone Responsavel<input name="guardianPhone" inputmode="tel" maxlength="20" /></label>
+            <label>15. Data Cadastro<input name="registrationDate" type="date" /></label>
+          </div>
+        </fieldset>
+        <fieldset id="censo-student-contact" hidden>
+          <input name="preferredName" /><input name="enrollmentCode" /><input name="studentPhone" />
+          <input name="guardianEmail" /><input name="contactTarget" value="guardian" />
+          <input name="contactPermission" value="not_informed" /><input name="contactConsentDate" />
+        </fieldset>
+        <fieldset id="censo-student-address" hidden>
+          <input name="state" value="SP" /><input name="complement" />
+        </fieldset>
+        <fieldset id="censo-student-extra" hidden>
+          <input name="school" /><input name="shift" /><input name="censusCode" />
+          <input name="censusIntegrationId" /><input name="censusReferenceDate" />
+          <input name="censusReviewStatus" value="pending" />
+          <input name="enrollmentStatus" value="Ativa" />
+          <select id="student-territory-zone" name="territoryZoneId"><option value="">Nenhuma zona selecionada</option></select>
+          <input name="territorySector" readonly /><textarea name="notes"></textarea>
+          <input name="territoryZoneName" type="hidden" /><input name="territorySource" type="hidden" />
+          <p id="territory-field-help" class="fieldset-note">Zona territorial não identificada.</p>
+        </fieldset>
         <p id="student-form-message" class="form-message" role="status"></p>
         <div class="dialog-actions"><button class="button button-secondary" type="button" data-close-dialog="student-dialog">Cancelar</button><button class="button button-primary" type="submit">Salvar aluno</button></div>
       </form>
