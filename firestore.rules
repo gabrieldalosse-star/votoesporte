@@ -154,17 +154,17 @@ service cloud.firestore {
 
     function validTerritoryZone(data) {
       return data.keys().hasOnly([
-          'name', 'sector', 'sourceVersion', 'geometry', 'geometryType', 'importedFrom',
+          'name', 'sector', 'sourceVersion', 'geometryJson', 'geometryType', 'importedFrom',
           'importedAtClient', 'updatedAt'
         ]) &&
         data.keys().hasAll([
-          'name', 'sector', 'sourceVersion', 'geometry', 'geometryType', 'importedFrom',
+          'name', 'sector', 'sourceVersion', 'geometryJson', 'geometryType', 'importedFrom',
           'importedAtClient', 'updatedAt'
         ]) &&
         data.name is string && data.name.size() > 0 && data.name.size() <= 120 &&
         data.sector is string && data.sector.size() <= 100 &&
         data.sourceVersion is string && data.sourceVersion.size() > 0 && data.sourceVersion.size() <= 180 &&
-        data.geometry is map &&
+        data.geometryJson is string && data.geometryJson.size() > 0 && data.geometryJson.size() <= 750000 &&
         data.geometryType in ['Polygon', 'MultiPolygon'] &&
         data.importedFrom == 'geojson-approved' &&
         data.importedAtClient is string && data.importedAtClient.size() <= 40 &&

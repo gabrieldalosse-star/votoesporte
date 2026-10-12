@@ -192,18 +192,18 @@
 
             <section id="view-territory" class="view" aria-labelledby="territory-title">
               <div class="page-intro territory-intro">
-                <div><span class="kicker">TERRITÓRIO E COBERTURA</span><h2 id="territory-title">Território que orienta, sem expor</h2><p>Associe alunos apenas a uma zona aprovada e acompanhe indicadores agregados. Endereços e pontos de residência nunca aparecem no mapa.</p></div>
+                <div><span class="kicker">TERRITÓRIO E COBERTURA</span><h2 id="territory-title">Censo Esportivo por setores</h2><p>Explore os quatro setores preliminares (Oeste, Centro, Sul e Leste) e acompanhe indicadores agregados. Endereços e pontos de residência nunca aparecem no mapa.</p></div>
                 <button id="open-territory-import" class="button button-primary hidden" type="button">Importar camada de zonas</button>
               </div>
               <div id="territory-summary" class="territory-summary"></div>
               <div class="territory-layout">
                 <article class="panel territory-map-panel">
-                  <div class="panel-heading"><div><p class="eyebrow">MAPA OPERACIONAL</p><h3>Votorantim e cobertura por bairro</h3></div><span id="territory-layer-status" class="pill">Sem camada</span></div>
-                  <div class="official-map-box"><p><strong>Base territorial verificável:</strong> o limite municipal exibido é a Malha Municipal 2024 do IBGE (código 3557006). O catálogo de bairros segue a nomenclatura publicada pela Prefeitura de Votorantim. A divisão espacial de bairros só será desenhada após importar uma camada oficial/aprovada; o sistema não inventa polígonos nem exibe endereços.</p><p><a href="https://www.ibge.gov.br/geociencias/organizacao-do-territorio/malhas-territoriais/15774-malhas.html" target="_blank" rel="noopener">Documentação da Malha Municipal do IBGE</a> · <a href="https://www.votorantim.sp.gov.br/portal/obras" target="_blank" rel="noopener">Catálogo público de bairros — Prefeitura</a></p></div><div id="territory-map" class="territory-map" role="region" aria-label="Mapa municipal oficial de Votorantim e camadas territoriais aprovadas"></div>
-                  <p class="territory-disclaimer">A classificação é feita por zona, não por endereço. Importe somente uma camada oficial ou aprovada pela gestão.</p>
+                  <div class="panel-heading"><div><p class="eyebrow">MAPA OPERACIONAL</p><h3>Votorantim e cobertura por setor</h3></div><span id="territory-layer-status" class="pill">Carregando</span></div>
+                  <div class="official-map-box"><p><strong>Camada preliminar, não oficial:</strong> os quatro setores são uma aproximação operacional para o Censo Esportivo e são carregados do pacote do aplicativo. Eles não representam limites oficiais de bairros, zoneamento ou atendimento da Prefeitura e devem ser substituídos após validação institucional.</p><p><a href="https://www.ibge.gov.br/geociencias/organizacao-do-territorio/malhas-territoriais/15774-malhas.html" target="_blank" rel="noopener">Documentação da Malha Municipal do IBGE</a> · <a href="https://www.votorantim.sp.gov.br/portal/obras" target="_blank" rel="noopener">Catálogo público de bairros — Prefeitura</a></p></div><label class="territory-filter">Filtrar setor<select id="territory-sector-filter" aria-label="Filtrar setores do mapa"><option value="all">Todos os setores</option></select></label><div id="territory-map" class="territory-map" role="region" aria-label="Mapa municipal de Votorantim e setores preliminares"></div>
+                  <p class="territory-disclaimer">A classificação é feita por setor, não por endereço. Esta camada é aproximada e não oficial; não a use para decisões administrativas, jurídicas ou de zoneamento.</p>
                 </article>
                 <article class="panel territory-zone-panel">
-                  <p class="eyebrow">ZONAS DISPONÍVEIS</p><h3>Revisão e cobertura</h3>
+                  <p class="eyebrow">SETORES DISPONÍVEIS</p><h3>Revisão e cobertura</h3>
                   <div id="territory-zone-list" class="territory-zone-list"></div>
                   <a href="data/votorantim-zonas.example.geojson" download>Baixar modelo GeoJSON sem dados pessoais →</a>
                 </article>

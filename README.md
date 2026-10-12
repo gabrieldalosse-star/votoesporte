@@ -16,7 +16,7 @@ A identidade em `assets/votorantim-esporte.svg` é uma ilustração original ins
 - Perfil de professor e acesso administrativo provisionado com segurança.
 - Cadastro de turmas, alunos, contatos de responsáveis, telefone autorizado do aluno, referência escolar e base Censo+.
 - Ações manuais de WhatsApp e ligação após registro explícito do canal autorizado; a plataforma não envia mensagens automaticamente.
-- Painel Censo+ e território com zonas agregadas, importação administrativa de GeoJSON e sem exposição de endereço ou pinos individuais.
+- Painel Censo+ e território com os quatro setores preliminares locais (Oeste, Centro, Sul e Leste), filtro no mapa, importação administrativa de GeoJSON e sem exposição de endereço ou pinos individuais. Os setores incluídos são aproximações, não limites oficiais.
 - Interface opcional do Google Maps, configurada por chave restrita e com o limite municipal IBGE sobreposto; veja [docs/GOOGLE-MAPS.md](docs/GOOGLE-MAPS.md).
 - Importação revisável por CSV, com o modelo oficial de 15 campos, confirmação explícita de revisão e modelo complementar opcional.
 - Chamada por turma, data e horário, com presença, falta e observação opcional; o painel mostra o total da última chamada.
@@ -45,6 +45,7 @@ O site no GitHub Pages é público por natureza; a lista de alunos continua prot
 │   └── styles.css                   # Design responsivo
 ├── data/MODELO-CADASTRO-CENSO-WILLIAN-VAZIO.csv
 ├── data/modelo-importacao-complementar-opcional.csv
+├── data/setores_votorantim_4_setores_PRELIMINAR.geojson  # camada local automática e não oficial
 ├── docs/
 │   ├── GUIA-FIREBASE.md
 │   ├── MANUAL-DE-USO.md
@@ -65,7 +66,7 @@ O site no GitHub Pages é público por natureza; a lista de alunos continua prot
 3. Crie os administradores apenas pelo Firebase Console ou Admin SDK, em `adminUsers/{UID}`. A interface não permite que um professor se promova.
 4. Restrinja os domínios autorizados e revise quem pode usar as contas Google escolhidas.
 5. Use somente os dados necessários à operação e à finalidade institucional aprovada.
-6. Antes de importar uma camada territorial, valide origem, versão, licença e aprovação institucional. Não geocodifique endereços de alunos nem use coordenadas de residência.
+6. Os quatro setores incluídos no pacote são aproximados e não oficiais. Antes de adotá-los para qualquer finalidade operacional, valide origem, versão, licença e aprovação institucional. Não geocodifique endereços de alunos nem use coordenadas de residência.
 
 Leia também [docs/PRIVACIDADE-E-SEGURANCA.md](docs/PRIVACIDADE-E-SEGURANCA.md) e [docs/CENSO-E-TERRITORIO.md](docs/CENSO-E-TERRITORIO.md). O aplicativo não substitui a validação jurídica, a política de privacidade da instituição ou o controle de responsáveis pelo tratamento de dados.
 
