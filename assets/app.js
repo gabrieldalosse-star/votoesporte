@@ -625,7 +625,47 @@ function updateProfileUi() {
     : "Confirme seu perfil profissional para começar a organizar suas turmas.";
 }
 
+let censoDashboardBairro = "";
+function censoText(value) { return String(value ?? "").trim(); }
+function censoKey(value) { return censoText(value).normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLocaleLowerCase("pt-BR").replace(/\s+/g, " "); }
+function censoPersonKey(student) { const name = censoKey(student.fullName || student.name); const birth = censoText(student.birthDate); return name ? `${name}|${birth}` : ""; }
+function censoUnique(rows) { const found = new Set(); return rows.filter(({student}) => { const key = censoPersonKey(student); if (!key || found.has(key)) return false; found.add(key); return true; }); }
+function censoAge(student) { const birth = censoText(student.birthDate); if (!/^\d{4}-\d{2}-\d{2}$/.test(birth)) return null; const date = new Date(`${birth}T12:00:00`); if (Number.isNaN(date.getTime())) return null; const now = new Date(); let age = now.getFullYear() - date.getFullYear(); if (now.getMonth() < date.getMonth() || (now.getMonth() === date.getMonth() && now.getDate() < date.getDate())) age--; return age >= 0 && age <= 120 ? age : null; }
+function censoPlot(target, entries, total, empty) {
+  const node = document.getElementById(target); if (!node) return;
+  if (!entries.length) { node.innerHTML = `<p class="censo-chart-empty">${escapeHtml(empty)}</p>`; return; }
+  const max = Math.max(...entries.map(([,n]) => n), 1);
+  node.innerHTML = entries.slice(0,12).map(([label,n]) => `<div class="censo-bar-row"><div class="censo-bar-label"><span title="${escapeAttr(label)}">${escapeHtml(label)}</span><strong>${n}</strong></div><div class="censo-bar-track" role="img" aria-label="${escapeAttr(label)}: ${n} de ${total}"><span style="width:${Math.max(2,Math.round(n/max*100))}%"></span></div></div>`).join("");
+}
+function censoRank(rows, selector) { const map = new Map(); rows.forEach(row => { const key = selector(row); if (key) map.set(key, (map.get(key)||0)+1); }); return [...map].sort((a,b)=>b[1]-a[1] || a[0].localeCompare(b[0],"pt-BR")); }
+function renderCensoAnalytics() {
+  const filter = document.getElementById("censo-neighborhood-filter"); if (!filter) return;
+  const all = state.classes.flatMap(cl => (state.studentsByClass[cl.id] || []).map(student => ({student,cl})));
+  const distinct = censoUnique(all);
+  const bairros = [...new Set(distinct.map(({student})=>censoText(student.neighborhood)).filter(Boolean))].sort((a,b)=>a.localeCompare(b,"pt-BR"));
+  const old = censoDashboardBairro;
+  filter.replaceChildren(new Option("Todos os bairros", ""));
+  bairros.forEach(b=>filter.add(new Option(b,b)));
+  if (old && bairros.some(b=>censoKey(b)===censoKey(old))) { filter.value=bairros.find(b=>censoKey(b)===censoKey(old)); } else { censoDashboardBairro=""; filter.value=""; }
+  const matches = ({student}) => !censoDashboardBairro || censoKey(student.neighborhood)===censoKey(censoDashboardBairro);
+  const filtered = all.filter(matches), people = censoUnique(filtered);
+  const summary=document.getElementById("censo-filter-summary");
+  if (summary) summary.innerHTML = `<strong>${people.length}</strong> participante${people.length===1?"":"s"} identificado${people.length===1?"":"s"} · <strong>${filtered.length}</strong> vínculo${filtered.length===1?"":"s"} em turma · <strong>${bairros.length}</strong> bairro${bairros.length===1?"":"s"} com cadastro`;
+  const byBairro = censoRank(people,({student})=>censoText(student.neighborhood)||"Bairro não informado");
+  const byActivity = censoRank(filtered,({cl})=>censoText(cl.sport)||"Atividade não informada");
+  const byAge = censoRank(people,({student})=>{const a=censoAge(student);return a===null?"Idade não informada":a<=6?"0 a 6 anos":a<=11?"7 a 11 anos":a<=14?"12 a 14 anos":a<=17?"15 a 17 anos":a<=29?"18 a 29 anos":a<=59?"30 a 59 anos":"60 anos ou mais";});
+  const ageOrder=["0 a 6 anos","7 a 11 anos","12 a 14 anos","15 a 17 anos","18 a 29 anos","30 a 59 anos","60 anos ou mais","Idade não informada"];
+  byAge.sort((a,b)=>ageOrder.indexOf(a[0])-ageOrder.indexOf(b[0]));
+  const byGender = censoRank(people,({student})=>censoText(student.gender)||"Não informado");
+  censoPlot("censo-chart-neighborhood",byBairro,people.length,"Cadastre participantes com bairro para visualizar a distribuição.");
+  censoPlot("censo-chart-activity",byActivity,filtered.length,"Não há matrículas neste filtro.");
+  censoPlot("censo-chart-age",byAge,people.length,"Não há participantes neste filtro.");
+  censoPlot("censo-chart-gender",byGender,people.length,"Não há participantes neste filtro.");
+}
+document.addEventListener("change",event=>{ if(event.target?.id==="censo-neighborhood-filter"){censoDashboardBairro=event.target.value;renderCensoAnalytics();} });
+
 function renderDashboard() {
+  renderCensoAnalytics();
   const totalStudents = Object.values(state.studentsByClass).reduce((sum, list) => sum + list.length, 0);
   const currentMonth = localMonth();
   const histories = Object.values(state.histories).flat().filter((entry) => entry.date?.startsWith(currentMonth));
@@ -732,7 +772,7 @@ function renderClassDetail(classItem) {
   }).join("")}</div>` : `<div class="empty-state"><span aria-hidden="true">✓</span><h3>Ainda não há histórico</h3><p>A primeira chamada salva aparecerá aqui, com data e percentual de presença.</p><button class="button button-secondary" data-action="open-attendance" data-id="${escapeAttr(classItem.id)}" type="button">Fazer chamada</button></div>`;
   const content = state.classDetailTab === "history" ? historyContent : studentContent;
   const countText = students.length ? `${students.length} aluno${students.length === 1 ? "" : "s"} carregado${students.length === 1 ? "" : "s"}` : "Sem alunos cadastrados";
-  return `<article class="panel class-detail"><div class="class-detail-header"><div><h3>${escapeHtml(classItem.name || "Turma sem nome")}</h3><p>${escapeHtml([classItem.sport, classItem.ageGroup, classItem.location, classItem.schedule].filter(Boolean).join(" · ") || "Complete os dados operacionais da turma.")}</p></div><div class="class-detail-actions"><button class="button button-ghost button-compact" data-action="edit-class" data-id="${escapeAttr(classItem.id)}" type="button">Editar turma</button><button class="button button-primary button-compact" data-action="open-attendance" data-id="${escapeAttr(classItem.id)}" type="button">Fazer chamada</button></div></div><div class="class-detail-tabs"><button class="detail-tab ${state.classDetailTab === "students" ? "active" : ""}" data-action="detail-tab" data-tab="students" type="button">Alunos <span>(${students.length})</span></button><button class="detail-tab ${state.classDetailTab === "history" ? "active" : ""}" data-action="detail-tab" data-tab="history" type="button">Histórico <span>(${history.length})</span></button></div><div class="student-toolbar"><p>${state.classDetailTab === "students" ? countText : "Últimas 30 chamadas desta turma"}</p>${state.classDetailTab === "students" ? `<button class="button button-secondary button-compact" data-action="open-student-dialog" data-class-id="${escapeAttr(classItem.id)}" type="button">+ Cadastrar aluno</button>` : ""}</div>${content}</article>`;
+  return `<article class="panel class-detail"><div class="class-detail-header"><div><h3>${escapeHtml(classItem.name || "Turma sem nome")}</h3><p>${escapeHtml([classItem.sport, classItem.ageGroup, classItem.location, classItem.schedule].filter(Boolean).join(" · ") || "Complete os dados operacionais da turma.")}</p></div><div class="class-detail-actions"><button class="button button-ghost button-compact" data-action="edit-class" data-id="${escapeAttr(classItem.id)}" type="button">Editar turma</button>${state.isAdmin ? `<button class="button button-ghost button-compact" style="color:#b42318" data-action="delete-class-admin" data-id="${escapeAttr(classItem.id)}" type="button">Excluir turma e dados</button>` : ""}<button class="button button-primary button-compact" data-action="open-attendance" data-id="${escapeAttr(classItem.id)}" type="button">Fazer chamada</button></div></div><div class="class-detail-tabs"><button class="detail-tab ${state.classDetailTab === "students" ? "active" : ""}" data-action="detail-tab" data-tab="students" type="button">Alunos <span>(${students.length})</span></button><button class="detail-tab ${state.classDetailTab === "history" ? "active" : ""}" data-action="detail-tab" data-tab="history" type="button">Histórico <span>(${history.length})</span></button></div><div class="student-toolbar"><p>${state.classDetailTab === "students" ? countText : "Últimas 30 chamadas desta turma"}</p>${state.classDetailTab === "students" ? `<button class="button button-secondary button-compact" data-action="open-student-dialog" data-class-id="${escapeAttr(classItem.id)}" type="button">+ Cadastrar aluno</button>` : ""}</div>${content}</article>`;
 }
 
 async function ensureAttendanceReady() {
@@ -982,6 +1022,8 @@ function openStudentDialog(classId, studentId = "") {
   syncTerritoryFields(form);
   window.CensoV2?.openStudent(form);
   updateStudentAgePreview();
+  const classDisplay = document.getElementById("student-class-display");
+  if (classDisplay) classDisplay.value = state.classes.find((item) => item.id === classId)?.name || classId || "";
   setFormMessage("student-form-message", "");
   showDialog("student-dialog");
 }
@@ -1021,6 +1063,25 @@ async function saveStudent(event) {
   } catch (error) {
     setFormMessage("student-form-message", friendlyFirebaseError(error) + (error?.code === "permission-denied" ? " Confirme se as regras firestore.rules desta versão foram publicadas no Firebase e se a turma pertence à sua conta." : ""));
   }
+}
+
+async function deleteClassAsAdmin(classId) {
+  if (!state.isAdmin) { toast("Operação exclusiva da administração.", "error"); return; }
+  const item = state.classes.find((entry) => entry.id === classId);
+  if (!item) return;
+  const name = item.name || "Turma sem nome";
+  const first = window.confirm(`EXCLUSÃO DEFINITIVA\n\nTurma: ${name}\n\nEsta ação apagará a turma, seus cadastros de alunos e as chamadas vinculadas. Não pode ser desfeita.\n\nFaça backup antes de prosseguir. Continuar?`);
+  if (!first) return;
+  const typed = window.prompt(`Para confirmar a exclusão da turma e seus dados, digite exatamente:\n${name}`);
+  if (typed !== name) { toast("Exclusão cancelada: confirmação não corresponde."); return; }
+  try {
+    await repository.deleteClassAsAdmin(classId);
+    state.selectedClassId = null;
+    delete state.studentsByClass[classId];
+    delete state.histories[classId];
+    toast("Turma e seus dados vinculados excluídos.");
+    if (state.isDemo) subscribeClasses();
+  } catch (error) { toast(friendlyFirebaseError(error), "error"); }
 }
 
 async function deleteStudent(classId, studentId) {
@@ -1417,6 +1478,7 @@ function handleDynamicClick(event) {
   if (action === "open-class-dialog") openClassDialog();
   if (action === "select-class") selectClass(id);
   if (action === "edit-class") openClassDialog(id);
+  if (action === "delete-class-admin") deleteClassAsAdmin(id);
   if (action === "open-attendance") openAttendanceFor(id);
   if (action === "open-student-dialog") openStudentDialog(classId);
   if (action === "edit-student") openStudentDialog(classId, id);
@@ -1564,6 +1626,29 @@ const repository = {
     await setDoc(ref, { ...payload, ...(studentId ? {} : { createdAt: serverTimestamp() }) }, { merge: Boolean(studentId) });
     return ref.id;
   },
+  async deleteClassAsAdmin(classId) {
+    if (!state.isAdmin) throw new Error("A exclusão de turmas é exclusiva do administrador.");
+    if (state.isDemo) {
+      const data = demoData();
+      delete data.students[classId];
+      delete data.attendance[classId];
+      delete data.classes[classId];
+      writeDemoData(data);
+      return;
+    }
+    // Firestore não exclui subcoleções automaticamente. Remova-as antes do documento pai.
+    // Lotes limitados a 300 operações, com leitura paginada para evitar estourar limites.
+    for (const subcollection of ["students", "attendance"]) {
+      for (;;) {
+        const page = await getDocs(query(collection(firebase.db, "classes", classId, subcollection), limit(300)));
+        if (page.empty) break;
+        const batch = writeBatch(firebase.db);
+        page.docs.forEach((entry) => batch.delete(entry.ref));
+        await batch.commit();
+      }
+    }
+    await deleteDoc(doc(firebase.db, "classes", classId));
+  },
   async deleteStudent(classId, studentId) {
     if (state.isDemo) {
       const data = demoData();
@@ -1670,9 +1755,32 @@ function ageAtEndOf2026(isoDate) {
   if (date.getUTCFullYear() !== year || date.getUTCMonth() !== month - 1 || date.getUTCDate() !== day || year > 2026 || year < 1900) return "";
   return String(2026 - year);
 }
+function ageExactToday(isoDate) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(isoDate || "")) return "";
+  const [year, month, day] = isoDate.split("-").map(Number);
+  const birth = new Date(year, month - 1, day, 12);
+  if (birth.getFullYear() !== year || birth.getMonth() !== month - 1 || birth.getDate() !== day) return "";
+  const now = new Date();
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 12);
+  if (birth > today || year < 1900) return "";
+  let years = today.getFullYear() - year;
+  let months = today.getMonth() - (month - 1);
+  let days = today.getDate() - day;
+  if (days < 0) {
+    months--;
+    // A data de referência do mês anterior determina o empréstimo de dias.
+    days += new Date(today.getFullYear(), today.getMonth(), 0).getDate();
+  }
+  if (months < 0) { years--; months += 12; }
+  // Ajusta aniversários no fim do mês sem produzir dias negativos.
+  if (days < 0) { months--; days += new Date(today.getFullYear(), today.getMonth() - 1, 0).getDate(); }
+  if (months < 0) { years--; months += 12; }
+  if (years < 0 || years > 125) return "";
+  return `${years} ${years === 1 ? "ano" : "anos"}, ${months} ${months === 1 ? "mês" : "meses"} e ${days} ${days === 1 ? "dia" : "dias"}`;
+}
 function updateStudentAgePreview() {
   const input = ui["student-age-preview"];
-  if (input) input.value = ageAtEndOf2026(ui["student-form"]?.elements.birthDate?.value) || "";
+  if (input) input.value = ageExactToday(ui["student-form"]?.elements.birthDate?.value);
 }
 ui["student-form"]?.elements.birthDate?.addEventListener("input", updateStudentAgePreview);
 
