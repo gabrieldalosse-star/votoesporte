@@ -104,7 +104,16 @@ const state = {
 
 let firebase = { app: null, auth: null, db: null, provider: null };
 
-bootstrap();
+bootstrap().catch((error) => {
+  console.error("Initialization failed", error);
+  document.getElementById("loading-screen")?.classList.add("hidden");
+  document.getElementById("auth-screen")?.classList.remove("hidden");
+  const message = document.getElementById("auth-message");
+  if (message) {
+    message.textContent = "Falha na inicialização: " + (error?.message || "erro desconhecido");
+    message.classList.remove("hidden");
+  }
+});
 
 async function bootstrap() {
   wireStaticEvents();
@@ -125,8 +134,16 @@ async function bootstrap() {
   try {
     firebase = createFirebase(window.FIREBASE_CONFIG);
     state.firebaseEnabled = true;
-    await getRedirectResult(firebase.auth).catch((error) => showAuthMessage(friendlyFirebaseError(error)));
-    onAuthStateChanged(firebase.auth, handleFirebaseUser);
+    onAuthStateChanged(firebase.auth, handleFirebaseUser, (error) => {
+      console.error("Firebase auth observer failed", error);
+      finishLoading();
+      showAuthScreen();
+      showAuthMessage(friendlyFirebaseError(error));
+    });
+    getRedirectResult(firebase.auth).catch((error) => {
+      console.error("Firebase redirect failed", error);
+      showAuthMessage(friendlyFirebaseError(error));
+    });
   } catch (error) {
     console.error("Firebase initialization failed", error);
     ui["firebase-setup-card"].classList.remove("hidden");
