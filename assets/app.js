@@ -948,6 +948,7 @@ function openStudentDialog(classId, studentId = "") {
     form.elements.censusReviewStatus.value = "pending";
   }
   syncTerritoryFields(form);
+  updateStudentAgePreview();
   setFormMessage("student-form-message", "");
   showDialog("student-dialog");
 }
@@ -963,9 +964,19 @@ async function saveStudent(event) {
   syncTerritoryFields(form);
   Object.assign(values, formValues(form));
   values.state = values.state.toUpperCase();
+  if (values.birthDate && !ageAtEndOf2026(values.birthDate)) {
+    setFormMessage("student-form-message", "Confira a data de nascimento: informe uma data válida até 2026.");
+    return;
+  }
   values.guardianPhone = formatPhone(values.guardianPhone || "");
   values.studentPhone = formatPhone(values.studentPhone || "");
   values.phone = formatPhone(values.phone || "");
+  const enrollmentCode = (values.enrollmentCode || "").trim().toLocaleLowerCase("pt-BR");
+  if (enrollmentCode && (state.studentsByClass[values.classId] || []).some((row) =>
+    row.id !== values.studentId && (row.enrollmentCode || "").trim().toLocaleLowerCase("pt-BR") === enrollmentCode)) {
+    setFormMessage("student-form-message", "Este código de matrícula já está em uso nesta turma.");
+    return;
+  }
   setFormMessage("student-form-message", "Salvando…", true);
   try {
     await repository.saveStudent(values);
@@ -975,7 +986,7 @@ async function saveStudent(event) {
     renderClasses();
     renderAttendance();
   } catch (error) {
-    setFormMessage("student-form-message", friendlyFirebaseError(error));
+    setFormMessage("student-form-message", friendlyFirebaseError(error) + (error?.code === "permission-denied" ? " Confirme se as regras firestore.rules desta versão foram publicadas no Firebase e se a turma pertence à sua conta." : ""));
   }
 }
 
@@ -1502,7 +1513,7 @@ const repository = {
       return id;
     }
     const ref = studentId ? doc(firebase.db, "classes", classId, "students", studentId) : doc(collection(firebase.db, "classes", classId, "students"));
-    await setDoc(ref, { ...payload, ...(studentId ? {} : { createdAt: serverTimestamp() }) }, { merge: true });
+    await setDoc(ref, { ...payload, ...(studentId ? {} : { createdAt: serverTimestamp() }) }, { merge: Boolean(studentId) });
     return ref.id;
   },
   async deleteStudent(classId, studentId) {
@@ -1592,6 +1603,31 @@ function writeDemoData(data) {
   localStorage.setItem(DEMO_STORE_KEY, JSON.stringify(data));
 }
 
+// Allowlist shared by individual registration and CSV import. Never persist UI-only keys.
+const STUDENT_ALLOWED_FIELDS = new Set([
+  "fullName", "preferredName", "enrollmentCode", "birthDate", "gender",
+  "guardianName", "guardianPhone", "studentPhone", "phone", "guardianEmail",
+  "contactTarget", "contactPermission", "contactConsentDate", "postalCode",
+  "state", "street", "number", "complement", "neighborhood", "city",
+  "school", "shift", "censusCode", "censusIntegrationId", "censusReferenceDate",
+  "censusReviewStatus", "territoryZoneId", "territoryZoneName",
+  "territorySector", "territorySource", "enrollmentStatus", "notes",
+  "pcdStatus", "registrationDate"
+]);
+
+function ageAtEndOf2026(isoDate) {
+  if (!/^\\d{4}-\\d{2}-\\d{2}$/.test(isoDate || "")) return "";
+  const [year, month, day] = isoDate.split("-").map(Number);
+  const date = new Date(Date.UTC(year, month - 1, day));
+  if (date.getUTCFullYear() !== year || date.getUTCMonth() !== month - 1 || date.getUTCDate() !== day || year > 2026 || year < 1900) return "";
+  return String(2026 - year);
+}
+function updateStudentAgePreview() {
+  const input = ui["student-age-preview"];
+  if (input) input.value = ageAtEndOf2026(ui["student-form"]?.elements.birthDate?.value) || "";
+}
+ui["student-form"]?.elements.birthDate?.addEventListener("input", updateStudentAgePreview);
+
 function buildStudentPayload(fields, timestamp) {
   const requestedZoneId = fields.territoryZoneId || fields.geo?.zoneId || "";
   const requestedZoneName = fields.territoryZoneName || fields.geo?.zoneLabel || "";
@@ -1607,7 +1643,7 @@ function buildStudentPayload(fields, timestamp) {
   const contactPermission = fields.contactPermission || fields.contact?.permission || "not_informed";
   const censusReviewStatus = fields.censusReviewStatus || fields.census?.reviewStatus || "pending";
   return {
-    ...fields,
+    ...Object.fromEntries(Object.entries(fields).filter(([key]) => STUDENT_ALLOWED_FIELDS.has(key))),
     guardianPhone,
     studentPhone,
     phone,
@@ -1666,7 +1702,7 @@ function parseCsv(input) {
 
 function normalizeCsvRows(rows) {
   const aliases = {
-    nome_completo: "fullName", nome: "fullName", full_name: "fullName",
+    nome_completo: "fullName", nome: "fullName", full_name: "fullName",\n    pcd: "pcdStatus", pessoa_com_deficiencia: "pcdStatus", data_cadastro: "registrationDate",
     nome_social: "preferredName", nome_preferido: "preferredName",
     matricula_codigo: "enrollmentCode", codigo_matricula: "enrollmentCode", matricula: "enrollmentCode",
     data_nascimento: "birthDate", nascimento: "birthDate",
@@ -1693,7 +1729,7 @@ function normalizeCsvRows(rows) {
     observacoes: "notes", observacao: "notes"
   };
   const maxLength = {
-    fullName: 120, preferredName: 120, enrollmentCode: 80, birthDate: 10, gender: 40,
+    fullName: 120, preferredName: 120, enrollmentCode: 80, birthDate: 10, gender: 40, pcdStatus: 3, registrationDate: 10,
     guardianName: 120, guardianPhone: 20, studentPhone: 20, phone: 20, guardianEmail: 120,
     contactTarget: 20, contactPermission: 30, contactConsentDate: 10,
     postalCode: 10, street: 140, number: 20, complement: 80, neighborhood: 100,
@@ -1708,7 +1744,7 @@ function normalizeCsvRows(rows) {
       const target = aliases[key];
       if (target && value) normalized[target] = value;
     });
-    normalized.postalCode = formatPostalCode(normalized.postalCode || "");
+    if (normalized.pcdStatus) {\n      const pcd = normalizeHeader(normalized.pcdStatus);\n      normalized.pcdStatus = ["sim", "s"].includes(pcd) ? "Sim" : ["nao", "n"].includes(pcd) ? "Não" : "";\n    }\n    normalized.postalCode = formatPostalCode(normalized.postalCode || "");
     normalized.guardianPhone = formatPhone(normalized.guardianPhone || "");
     normalized.studentPhone = formatPhone(normalized.studentPhone || "");
     normalized.phone = formatPhone(normalized.phone || "");
