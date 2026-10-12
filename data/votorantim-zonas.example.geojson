@@ -1,0 +1,11 @@
+{
+  "type": "FeatureCollection",
+  "metadata": {
+    "title": "Camada territorial aprovada — Votorantim",
+    "source": "Preencher com fonte oficial aprovada",
+    "version": "",
+    "crs": "EPSG:4326",
+    "instructions": "Inclua apenas polígonos de bairros, setores ou zonas autorizados. Não inclua endereços, nomes ou pontos de moradia de alunos."
+  },
+  "features": []
+}

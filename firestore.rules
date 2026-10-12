@@ -1,0 +1,276 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Authentication is intentionally separate from authorization: a profile
+    // field must never be treated as an administrative credential.
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    // Administrative users are provisioned only with the Firebase Console or
+    // the Admin SDK. No client-side rule grants or changes this membership.
+    function isAdmin() {
+      return signedIn() &&
+        exists(/databases/$(database)/documents/adminUsers/$(request.auth.uid));
+    }
+
+    function isSelf(userId) {
+      return signedIn() && request.auth.uid == userId;
+    }
+
+    function ownsClass(classId) {
+      return signedIn() &&
+        get(/databases/$(database)/documents/classes/$(classId)).data.teacherId ==
+          request.auth.uid;
+    }
+
+    function canAccessClass(classId) {
+      return isAdmin() || ownsClass(classId);
+    }
+
+    // Keep browser clients constrained to the fields this MVP actually uses.
+    // Authorization alone is not enough when the documents contain contact,
+    // address and attendance information.
+    function optionalText(data, field, maxLength) {
+      return data.get(field, '') is string && data.get(field, '').size() <= maxLength;
+    }
+
+    function optionalEnum(data, field, allowedValues) {
+      return data.get(field, '') is string && data.get(field, '') in allowedValues;
+    }
+
+    function validContact(data) {
+      return data is map &&
+        data.keys().hasOnly([
+          'target', 'permission', 'consentDate', 'guardianPhone',
+          'studentPhone', 'alternatePhone'
+        ]) &&
+        data.keys().hasAll(['target', 'permission']) &&
+        data.target in ['guardian', 'student', 'alternate'] &&
+        data.permission in ['not_informed', 'whatsapp', 'call', 'both', 'no_contact'] &&
+        optionalText(data, 'consentDate', 10) &&
+        optionalText(data, 'guardianPhone', 20) &&
+        optionalText(data, 'studentPhone', 20) &&
+        optionalText(data, 'alternatePhone', 20);
+    }
+
+    function validCensus(data) {
+      return data is map &&
+        data.keys().hasOnly([
+          'version', 'integrationId', 'referenceDate', 'reviewStatus', 'externalCode'
+        ]) &&
+        data.keys().hasAll(['version', 'reviewStatus']) &&
+        data.version == 'censo-plus-base-1' &&
+        data.reviewStatus in ['pending', 'reviewed', 'not_applicable'] &&
+        optionalText(data, 'integrationId', 80) &&
+        optionalText(data, 'referenceDate', 10) &&
+        optionalText(data, 'externalCode', 80);
+    }
+
+    function validGeo(data) {
+      return data is map &&
+        data.keys().hasOnly([
+          'zoneId', 'zoneLabel', 'sector', 'sourceVersion', 'matchMethod'
+        ]) &&
+        data.keys().hasAll(['matchMethod']) &&
+        data.matchMethod in ['manual-zone-selection', 'not-classified'] &&
+        optionalText(data, 'zoneId', 100) &&
+        optionalText(data, 'zoneLabel', 120) &&
+        optionalText(data, 'sector', 100) &&
+        optionalText(data, 'sourceVersion', 180);
+    }
+
+    function validStudent(data) {
+      return data.keys().hasOnly([
+          'fullName', 'preferredName', 'enrollmentCode', 'birthDate', 'gender',
+          'guardianName', 'guardianPhone', 'studentPhone', 'phone', 'guardianEmail',
+          'contactTarget', 'contactPermission', 'contactConsentDate',
+          'postalCode', 'state', 'street', 'number', 'complement', 'neighborhood', 'city',
+          'school', 'shift', 'censusCode', 'censusIntegrationId', 'censusReferenceDate',
+          'censusReviewStatus', 'territoryZoneId', 'territoryZoneName', 'territorySector',
+          'territorySource', 'enrollmentStatus', 'notes', 'contact', 'census', 'geo',
+          'createdAt', 'updatedAt'
+        ]) &&
+        data.keys().hasAll(['fullName', 'updatedAt']) &&
+        data.fullName is string && data.fullName.size() > 0 && data.fullName.size() <= 120 &&
+        data.updatedAt is timestamp &&
+        optionalText(data, 'preferredName', 120) &&
+        optionalText(data, 'enrollmentCode', 80) &&
+        optionalText(data, 'birthDate', 10) &&
+        optionalEnum(data, 'gender', ['', 'Feminino', 'Masculino', 'Outro', 'Prefiro não informar']) &&
+        optionalText(data, 'guardianName', 120) &&
+        optionalText(data, 'guardianPhone', 20) &&
+        optionalText(data, 'studentPhone', 20) &&
+        optionalText(data, 'phone', 20) &&
+        optionalText(data, 'guardianEmail', 120) &&
+        optionalEnum(data, 'contactTarget', ['', 'guardian', 'student', 'alternate']) &&
+        optionalEnum(data, 'contactPermission', ['', 'not_informed', 'whatsapp', 'call', 'both', 'no_contact']) &&
+        optionalText(data, 'contactConsentDate', 10) &&
+        optionalText(data, 'postalCode', 10) &&
+        optionalText(data, 'state', 2) &&
+        optionalText(data, 'street', 140) &&
+        optionalText(data, 'number', 20) &&
+        optionalText(data, 'complement', 80) &&
+        optionalText(data, 'neighborhood', 100) &&
+        optionalText(data, 'city', 100) &&
+        optionalText(data, 'school', 140) &&
+        optionalEnum(data, 'shift', ['', 'Manhã', 'Tarde', 'Noite', 'Integral']) &&
+        optionalText(data, 'censusCode', 80) &&
+        optionalText(data, 'censusIntegrationId', 80) &&
+        optionalText(data, 'censusReferenceDate', 10) &&
+        optionalEnum(data, 'censusReviewStatus', ['', 'pending', 'reviewed', 'not_applicable']) &&
+        optionalText(data, 'territoryZoneId', 100) &&
+        optionalText(data, 'territoryZoneName', 120) &&
+        optionalText(data, 'territorySector', 100) &&
+        optionalText(data, 'territorySource', 180) &&
+        optionalEnum(data, 'enrollmentStatus', ['', 'Ativa', 'Pendente', 'Inativa']) &&
+        optionalText(data, 'notes', 500) &&
+        (!data.keys().hasAny(['contact']) || validContact(data.contact)) &&
+        (!data.keys().hasAny(['census']) || validCensus(data.census)) &&
+        (!data.keys().hasAny(['geo']) || validGeo(data.geo));
+    }
+
+    function validNewStudent(data) {
+      return validStudent(data) &&
+        data.keys().hasAll(['createdAt']) && data.createdAt is timestamp;
+    }
+
+    function validExistingStudent(data) {
+      return validStudent(data) &&
+        (!data.keys().hasAny(['createdAt']) || data.createdAt is timestamp);
+    }
+
+    function validClass(data) {
+      return data.keys().hasOnly([
+          'name', 'sport', 'ageGroup', 'location', 'schedule', 'notes', 'active',
+          'teacherId', 'teacherName', 'createdAt', 'updatedAt'
+        ]) &&
+        data.keys().hasAll(['name', 'sport', 'active', 'teacherId', 'teacherName', 'updatedAt']) &&
+        data.name is string && data.name.size() > 0 && data.name.size() <= 120 &&
+        data.sport is string && data.sport.size() > 0 && data.sport.size() <= 80 &&
+        data.active is bool &&
+        data.teacherId is string && data.teacherId.size() > 0 && data.teacherId.size() <= 160 &&
+        data.teacherName is string && data.teacherName.size() <= 120 &&
+        data.updatedAt is timestamp &&
+        optionalText(data, 'ageGroup', 100) &&
+        optionalText(data, 'location', 140) &&
+        optionalText(data, 'schedule', 180) &&
+        optionalText(data, 'notes', 500);
+    }
+
+    function validNewClass(data) {
+      return validClass(data) && data.keys().hasAll(['createdAt']) && data.createdAt is timestamp;
+    }
+
+    function validAttendance(data, classId, sessionId) {
+      return data.keys().hasOnly([
+          'date', 'classId', 'className', 'teacherId', 'teacherName', 'records',
+          'markedCount', 'presentCount', 'absentCount', 'updatedAt'
+        ]) &&
+        data.keys().hasAll([
+          'date', 'classId', 'className', 'teacherId', 'teacherName', 'records',
+          'markedCount', 'presentCount', 'absentCount', 'updatedAt'
+        ]) &&
+        data.date is string && data.date == sessionId && data.date.size() == 10 &&
+        data.classId is string && data.classId == classId &&
+        data.className is string && data.className.size() <= 120 &&
+        data.teacherId is string && data.teacherId == get(/databases/$(database)/documents/classes/$(classId)).data.teacherId &&
+        data.teacherName is string && data.teacherName.size() <= 120 &&
+        data.records is map && data.records.size() > 0 && data.records.size() <= 300 &&
+        data.markedCount is int && data.markedCount > 0 && data.markedCount <= data.records.size() &&
+        data.presentCount is int && data.presentCount >= 0 && data.presentCount <= data.markedCount &&
+        data.absentCount is int && data.absentCount >= 0 && data.absentCount <= data.markedCount &&
+        data.presentCount + data.absentCount == data.markedCount &&
+        data.updatedAt is timestamp;
+    }
+
+    function validTerritoryZone(data) {
+      return data.keys().hasOnly([
+          'name', 'sector', 'sourceVersion', 'geometry', 'geometryType', 'importedFrom',
+          'importedAtClient', 'updatedAt'
+        ]) &&
+        data.keys().hasAll([
+          'name', 'sector', 'sourceVersion', 'geometry', 'geometryType', 'importedFrom',
+          'importedAtClient', 'updatedAt'
+        ]) &&
+        data.name is string && data.name.size() > 0 && data.name.size() <= 120 &&
+        data.sector is string && data.sector.size() <= 100 &&
+        data.sourceVersion is string && data.sourceVersion.size() > 0 && data.sourceVersion.size() <= 180 &&
+        data.geometry is map &&
+        data.geometryType in ['Polygon', 'MultiPolygon'] &&
+        data.importedFrom == 'geojson-approved' &&
+        data.importedAtClient is string && data.importedAtClient.size() <= 40 &&
+        data.updatedAt is timestamp;
+    }
+
+    // A signed-in person may maintain only their own profile. Administrative
+    // authorization is never derived from this document.
+    match /users/{userId} {
+      allow read: if isSelf(userId) || isAdmin();
+      // The client may create only a normal teacher profile, and can never
+      // promote that profile later. Admin rights come exclusively from
+      // adminUsers/{uid}, provisioned by a trusted server or Console.
+      allow create: if isSelf(userId) &&
+        request.resource.data.role == "teacher";
+      allow update: if isSelf(userId) &&
+        request.resource.data.role == resource.data.role &&
+        resource.data.role == "teacher";
+      allow delete: if isAdmin();
+    }
+
+    // Seed and revoke this collection through the Firebase Console or Admin
+    // SDK. Even an existing administrator cannot make another browser user an
+    // administrator through Firestore client writes.
+    match /adminUsers/{userId} {
+      // A signed-in user may test only their own membership, which lets the
+      // client select the proper interface without exposing the admin list.
+      allow get: if isSelf(userId) || isAdmin();
+      allow list: if isAdmin();
+      allow write: if false;
+    }
+
+    // Territorial boundaries contain no student information. They are readable
+    // by signed-in staff so a teacher can choose an approved zone, but only a
+    // provisioned administrator can add or revise the GeoJSON geometry.
+    match /territoryZones/{zoneId} {
+      allow read: if signedIn();
+      allow create, update: if isAdmin() && validTerritoryZone(request.resource.data);
+      allow delete: if isAdmin();
+    }
+
+    match /classes/{classId} {
+      allow read: if isAdmin() ||
+        (signedIn() && resource.data.teacherId == request.auth.uid);
+
+      // A teacher can create a class only when assigning it to themself.
+      allow create: if validNewClass(request.resource.data) &&
+        (isAdmin() ||
+          (signedIn() && request.resource.data.teacherId == request.auth.uid));
+
+      // Do not let a teacher transfer a class to a different account.
+      allow update: if validClass(request.resource.data) &&
+        (isAdmin() ||
+        (signedIn() &&
+          resource.data.teacherId == request.auth.uid &&
+          request.resource.data.teacherId == resource.data.teacherId));
+
+      allow delete: if isAdmin() ||
+        (signedIn() && resource.data.teacherId == request.auth.uid);
+
+      // Student records are private to the class teacher and administrators.
+      match /students/{studentId} {
+        allow read, delete: if canAccessClass(classId);
+        allow create: if canAccessClass(classId) && validNewStudent(request.resource.data);
+        allow update: if canAccessClass(classId) && validExistingStudent(request.resource.data);
+      }
+
+      // Each document is one class session and its attendance information.
+      match /attendance/{sessionId} {
+        allow read, delete: if canAccessClass(classId);
+        allow create, update: if canAccessClass(classId) &&
+          validAttendance(request.resource.data, classId, sessionId);
+      }
+    }
+  }
+}

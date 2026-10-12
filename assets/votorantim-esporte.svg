@@ -1,0 +1,24 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 160 184" role="img" aria-labelledby="title desc">
+  <title id="title">Identidade visual Votorantim Esporte e Censo+</title>
+  <desc id="desc">Emblema gráfico original em azul, amarelo, verde e vermelho, inspirado nas cores municipais.</desc>
+  <defs>
+    <linearGradient id="blue" x1="0" y1="0" x2="1" y2="1">
+      <stop stop-color="#0759a7"/>
+      <stop offset="1" stop-color="#032d68"/>
+    </linearGradient>
+    <linearGradient id="gold" x1="0" y1="0" x2="1" y2="1">
+      <stop stop-color="#ffd95b"/>
+      <stop offset="1" stop-color="#e8aa18"/>
+    </linearGradient>
+  </defs>
+  <path d="M80 5 145 26v57c0 45-27 76-65 96C42 159 15 128 15 83V26L80 5Z" fill="url(#blue)" stroke="#f8d15a" stroke-width="5"/>
+  <path d="M21 44 139 103v17L21 61Z" fill="url(#gold)" opacity=".98"/>
+  <path d="M21 62 139 121v11L21 73Z" fill="#c92a32" opacity=".98"/>
+  <path d="M47 36c13 11 21 20 33 40 12-20 20-29 33-40" fill="none" stroke="#238653" stroke-linecap="round" stroke-width="9"/>
+  <path d="m80 45 5 11 12 1-9 8 3 12-11-6-11 6 3-12-9-8 12-1 5-11Z" fill="#fff4bc"/>
+  <circle cx="49" cy="121" r="13" fill="#fff" opacity=".92"/>
+  <path d="M49 110v22M38 121h22M41 113l16 16M57 113l-16 16" stroke="#0c5c9f" stroke-width="2.5"/>
+  <circle cx="111" cy="121" r="13" fill="#fff" opacity=".92"/>
+  <path d="M111 110v22M100 121h22M103 113l16 16M119 113l-16 16" stroke="#0c5c9f" stroke-width="2.5"/>
+  <path d="M39 145c13 10 27 16 41 21 14-5 28-11 41-21" fill="none" stroke="#f8d15a" stroke-linecap="round" stroke-width="3"/>
+</svg>

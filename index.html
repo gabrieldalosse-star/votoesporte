@@ -1,0 +1,320 @@
+<!doctype html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta
+      name="description"
+      content="Plataforma de chamada, acompanhamento Censo+ e território da Rede Esportiva de Votorantim."
+    />
+    <meta name="theme-color" content="#063b79" />
+    <title>Votorantim Esporte &amp; Censo+ · Chamada</title>
+    <link rel="icon" href="assets/favicon.svg" type="image/svg+xml" />
+    <link rel="stylesheet" href="assets/styles.css" />
+  </head>
+  <body>
+    <a class="skip-link" href="#main-content">Pular para o conteúdo</a>
+
+    <div id="app-shell" class="app-shell">
+      <section id="loading-screen" class="loading-screen" aria-live="polite">
+        <div class="loading-mark municipal-mark" aria-hidden="true"><img src="assets/votorantim-esporte.svg" alt="" /></div>
+        <div>
+          <p class="eyebrow">Rede Esportiva de Votorantim</p>
+          <h1>Preparando a chamada</h1>
+          <p>Carregando um ambiente seguro para professores.</p>
+        </div>
+      </section>
+
+      <section id="auth-screen" class="auth-screen hidden" aria-labelledby="auth-title">
+        <div class="auth-hero">
+          <div class="brand-lockup">
+            <div class="brand-mark municipal-mark" aria-hidden="true"><img src="assets/votorantim-esporte.svg" alt="" /></div>
+            <div>
+              <p class="eyebrow">REDE ESPORTIVA</p>
+              <p class="brand-name">Votorantim</p>
+            </div>
+          </div>
+          <div class="hero-copy">
+            <span class="kicker">Chamada · Censo+ · Território</span>
+            <h1 id="auth-title">A chamada, os dados e os avanços da sua turma em um só lugar.</h1>
+            <p>
+              Registre presenças, acompanhe cada aluno e gere relatórios claros — com dados protegidos, território agregado e acesso individual por professor.
+            </p>
+          </div>
+          <ul class="trust-list" aria-label="Recursos da plataforma">
+            <li><span aria-hidden="true">✓</span> Sincronização segura entre dispositivos</li>
+            <li><span aria-hidden="true">✓</span> Controle por turma e perfil de acesso</li>
+            <li><span aria-hidden="true">✓</span> Relatórios por período e aluno</li>
+          </ul>
+        </div>
+        <div class="auth-panel">
+          <div id="firebase-setup-card" class="setup-card hidden">
+            <span class="status-dot warning" aria-hidden="true"></span>
+            <div>
+              <strong>Configuração Firebase pendente</strong>
+              <p>Preencha <code>firebase-config.js</code> para ativar login e sincronização em nuvem.</p>
+            </div>
+          </div>
+          <p class="eyebrow">ACESSO DA EQUIPE</p>
+          <h2>Entre com sua conta Google</h2>
+          <p class="muted">Use a conta autorizada pela coordenação. O primeiro acesso pede a confirmação do seu perfil.</p>
+          <button id="google-sign-in" class="button button-primary button-google" type="button">
+            <svg aria-hidden="true" viewBox="0 0 24 24"><path fill="#4285f4" d="M21.35 12.27c0-.79-.07-1.55-.22-2.27H12v4.3h5.22a4.46 4.46 0 0 1-1.94 2.92v2.79h3.59c2.1-1.94 3.48-4.8 3.48-7.74Z"/><path fill="#34a853" d="M12 21.72c2.62 0 4.82-.87 6.43-2.36l-3.59-2.79c-1 .67-2.27 1.06-3.84 1.06-2.55 0-4.71-1.72-5.48-4.03H1.8v2.88A9.72 9.72 0 0 0 12 21.72Z"/><path fill="#fbbc05" d="M6.52 13.6A5.85 5.85 0 0 1 6.21 12c0-.56.1-1.1.3-1.6V7.52H2.8A9.72 9.72 0 0 0 2.8 16.5l3.72-2.9Z"/><path fill="#ea4335" d="M12 6.37c1.75 0 3.32.6 4.55 1.78l3.42-3.42C16.81 1.79 14.61.28 12 .28A9.72 9.72 0 0 0 1.8 7.52l3.72 2.88C6.3 8.09 8.45 6.37 12 6.37Z"/></svg>
+            Continuar com Google
+          </button>
+          <button id="demo-sign-in" class="button button-secondary hidden" type="button">Explorar em modo local</button>
+          <p id="auth-message" class="form-message" role="status"></p>
+          <div class="privacy-note">
+            <span aria-hidden="true">⌁</span>
+            <p>Não inclua dados de alunos sem autorização institucional e base legal adequada.</p>
+          </div>
+        </div>
+      </section>
+
+      <div id="workspace" class="workspace hidden">
+        <aside id="sidebar" class="sidebar" aria-label="Navegação principal">
+          <div class="sidebar-brand">
+            <div class="brand-mark small municipal-mark" aria-hidden="true"><img src="assets/votorantim-esporte.svg" alt="" /></div>
+            <div><strong>Votorantim</strong><span>Rede Esportiva</span></div>
+          </div>
+          <nav class="main-nav">
+            <button class="nav-item active" data-view="dashboard" type="button"><span aria-hidden="true">◫</span> Visão geral</button>
+            <button class="nav-item" data-view="classes" type="button"><span aria-hidden="true">◒</span> Minhas turmas</button>
+            <button class="nav-item" data-view="attendance" type="button"><span aria-hidden="true">✓</span> Fazer chamada</button>
+            <button class="nav-item" data-view="reports" type="button"><span aria-hidden="true">↗</span> Relatórios</button>
+            <button class="nav-item" data-view="territory" type="button"><span aria-hidden="true">⌖</span> Censo+ e território</button>
+            <button class="nav-item" data-view="import" type="button"><span aria-hidden="true">⇩</span> Importar alunos</button>
+            <button id="admin-nav" class="nav-item hidden" data-view="admin" type="button"><span aria-hidden="true">◈</span> Gestão</button>
+          </nav>
+          <div class="sidebar-bottom">
+            <button class="nav-item" data-view="help" type="button"><span aria-hidden="true">?</span> Guia interativo</button>
+            <a class="nav-item docs-link" href="docs/MANUAL-DE-USO.md" target="_blank" rel="noopener"><span aria-hidden="true">↗</span> Manual completo</a>
+          </div>
+        </aside>
+
+        <div class="workspace-main">
+          <header class="topbar">
+            <button id="mobile-menu" class="icon-button mobile-only" type="button" aria-label="Abrir menu">☰</button>
+            <div class="topbar-context">
+              <p id="context-kicker" class="eyebrow">VISÃO GERAL</p>
+              <h1 id="page-title">Bom trabalho!</h1>
+            </div>
+            <div class="topbar-actions">
+              <span id="mode-badge" class="mode-badge hidden">Modo local</span>
+              <button id="quick-attendance" class="button button-compact button-primary" type="button">+ Nova chamada</button>
+              <button id="profile-menu" class="profile-chip" type="button" aria-haspopup="true" aria-expanded="false">
+                <span id="profile-avatar" class="avatar">?</span>
+                <span id="profile-name">Perfil</span>
+                <span aria-hidden="true">⌄</span>
+              </button>
+              <div id="profile-popover" class="profile-popover hidden">
+                <button id="edit-profile" type="button">Editar perfil</button>
+                <button id="sign-out" type="button">Sair</button>
+              </div>
+            </div>
+          </header>
+
+          <main id="main-content" class="main-content" tabindex="-1">
+            <section id="view-dashboard" class="view active" aria-labelledby="dashboard-title">
+              <div class="page-intro">
+                <div>
+                  <span class="kicker">PAINEL DO PROFESSOR</span>
+                  <h2 id="dashboard-title">O que importa hoje</h2>
+                  <p id="dashboard-subtitle">Comece criando uma turma para registrar sua primeira chamada.</p>
+                </div>
+                <button id="dashboard-add-class" class="button button-primary" type="button">+ Cadastrar turma</button>
+              </div>
+              <div id="dashboard-stats" class="stats-grid"></div>
+              <div class="dashboard-grid">
+                <article class="panel next-action-panel">
+                  <div class="panel-heading">
+                    <div><p class="eyebrow">PRÓXIMO PASSO</p><h3>Chamada de hoje</h3></div>
+                    <span class="pulse-dot" aria-label="Ao vivo"></span>
+                  </div>
+                  <div id="today-classes" class="today-list"></div>
+                </article>
+                <article class="panel progress-panel">
+                  <div class="panel-heading"><div><p class="eyebrow">ACOMPANHAMENTO</p><h3>Presença no período</h3></div><button class="text-button" data-view="reports" type="button">Ver relatório</button></div>
+                  <div id="dashboard-progress" class="progress-empty">Ainda não há chamadas concluídas neste período.</div>
+                </article>
+              </div>
+              <article class="panel privacy-banner">
+                <span class="privacy-icon" aria-hidden="true">⌁</span>
+                <div><strong>Privacidade desde o primeiro cadastro</strong><p>Guarde apenas os dados necessários para a atividade esportiva. A plataforma não publica listas de alunos.</p></div>
+                <button class="text-button" data-view="help" type="button">Ver boas práticas</button>
+              </article>
+            </section>
+
+            <section id="view-classes" class="view" aria-labelledby="classes-title">
+              <div class="page-intro">
+                <div><span class="kicker">ORGANIZAÇÃO</span><h2 id="classes-title">Minhas turmas</h2><p>Cadastre e acompanhe cada grupo com uma visão clara de alunos e histórico.</p></div>
+                <button id="add-class" class="button button-primary" type="button">+ Cadastrar turma</button>
+              </div>
+              <div id="classes-content" class="classes-layout"></div>
+            </section>
+
+            <section id="view-attendance" class="view" aria-labelledby="attendance-title">
+              <div class="page-intro attendance-intro">
+                <div><span class="kicker">PRESENÇA</span><h2 id="attendance-title">Fazer chamada</h2><p>Marque a turma, revise e salve. A chamada fica vinculada à data escolhida.</p></div>
+                <div class="save-attendance-area"><span id="attendance-save-state" class="save-state">Sem alterações</span><button id="save-attendance" class="button button-primary" type="button">Salvar chamada</button></div>
+              </div>
+              <article class="panel attendance-controls">
+                <label>Turma<select id="attendance-class" aria-label="Selecionar turma"></select></label>
+                <label>Data<input id="attendance-date" type="date" /></label>
+                <div class="attendance-summary"><span>Marcados</span><strong id="attendance-marked">0 / 0</strong><div class="mini-progress"><span id="attendance-progress"></span></div></div>
+              </article>
+              <article class="panel attendance-panel">
+                <div class="attendance-toolbar">
+                  <div><h3>Lista de alunos</h3><p id="attendance-helper">Escolha uma turma para começar.</p></div>
+                  <div class="bulk-actions"><button id="mark-all-present" class="button button-secondary button-compact" type="button">Todos presentes</button><button id="clear-attendance" class="button button-ghost button-compact" type="button">Limpar marcações</button></div>
+                </div>
+                <div id="attendance-list" class="attendance-list"></div>
+              </article>
+            </section>
+
+            <section id="view-reports" class="view" aria-labelledby="reports-title">
+              <div class="page-intro">
+                <div><span class="kicker">ANÁLISE</span><h2 id="reports-title">Relatórios de presença</h2><p>Gere indicadores de turma, professor e evolução individual sem precisar montar planilhas manualmente.</p></div>
+                <div class="report-actions"><button id="export-csv" class="button button-secondary" type="button">Exportar CSV</button><button id="print-report" class="button button-primary" type="button">Salvar em PDF</button></div>
+              </div>
+              <article class="panel report-filters">
+                <label>Período<input id="report-month" type="month" /></label>
+                <label>Escopo<select id="report-class"><option value="all">Todas as minhas turmas</option></select></label>
+                <button id="generate-report" class="button button-primary" type="button">Gerar relatório</button>
+              </article>
+              <div id="report-print-area">
+                <div id="report-empty" class="empty-state panel"><span aria-hidden="true">↗</span><h3>Seu relatório começa quando houver chamadas</h3><p>Selecione o período e gere uma visão consolidada. Nenhum dado de aluno será incluído até que você o cadastre.</p></div>
+                <div id="report-content" class="hidden"></div>
+              </div>
+            </section>
+
+            <section id="view-territory" class="view" aria-labelledby="territory-title">
+              <div class="page-intro territory-intro">
+                <div><span class="kicker">CENSO+ E TERRITÓRIO</span><h2 id="territory-title">Território que orienta, sem expor</h2><p>Associe alunos apenas a uma zona aprovada e acompanhe indicadores agregados. Endereços e pontos de residência nunca aparecem no mapa.</p></div>
+                <button id="open-territory-import" class="button button-primary hidden" type="button">Importar camada de zonas</button>
+              </div>
+              <div id="territory-summary" class="territory-summary"></div>
+              <div class="territory-layout">
+                <article class="panel territory-map-panel">
+                  <div class="panel-heading"><div><p class="eyebrow">MAPA OPERACIONAL</p><h3>Camada territorial aprovada</h3></div><span id="territory-layer-status" class="pill">Sem camada</span></div>
+                  <div id="territory-map" class="territory-map" role="region" aria-label="Mapa de zonas territoriais aprovadas"></div>
+                  <p class="territory-disclaimer">A classificação é feita por zona, não por endereço. Importe somente uma camada oficial ou aprovada pela gestão.</p>
+                </article>
+                <article class="panel territory-zone-panel">
+                  <p class="eyebrow">ZONAS DISPONÍVEIS</p><h3>Revisão e cobertura</h3>
+                  <div id="territory-zone-list" class="territory-zone-list"></div>
+                  <a href="data/votorantim-zonas.example.geojson" download>Baixar modelo GeoJSON sem dados pessoais →</a>
+                </article>
+              </div>
+              <article class="panel census-guidance">
+                <div><span aria-hidden="true">◌</span><h3>Pronto para a sua sequência Censo+</h3><p>O cadastro já separa identificação, contato, território e referência de censo. Os campos específicos da sua planilha serão adicionados após você enviar a ordem e a finalidade de cada dado.</p></div>
+                <div class="census-guidance-tags"><span>sem geocodificação de endereço</span><span>sem pinos individuais</span><span>relatórios agregados</span></div>
+              </article>
+            </section>
+
+            <section id="view-import" class="view" aria-labelledby="import-title">
+              <div class="page-intro">
+                <div><span class="kicker">MIGRAÇÃO ASSISTIDA</span><h2 id="import-title">Importar alunos</h2><p>Use o modelo de planilha para trazer alunos de uma turma de forma controlada e revisável.</p></div>
+                <a class="button button-secondary" href="data/modelo-importacao-alunos.csv" download>Baixar modelo CSV</a>
+              </div>
+              <div class="import-grid">
+                <article class="panel import-flow">
+                  <div class="step-number">1</div><div><h3>Escolha a turma</h3><p>Os dados serão armazenados somente dentro da turma selecionada.</p><select id="import-class" aria-label="Turma para importação"></select></div>
+                  <div class="step-number">2</div><div><h3>Envie o arquivo CSV</h3><p>O modelo já traz os campos reconhecidos pela plataforma.</p><label class="file-drop"><input id="import-file" type="file" accept=".csv,text/csv" /><span aria-hidden="true">⇧</span><strong>Selecionar arquivo CSV</strong><small>Nenhum arquivo selecionado</small></label></div>
+                  <div class="step-number">3</div><div><h3>Revise antes de salvar</h3><p id="import-summary">Ainda não há linhas para importar.</p><button id="confirm-import" class="button button-primary" type="button" disabled>Importar alunos revisados</button></div>
+                </article>
+                <article class="panel import-guide">
+                  <p class="eyebrow">CAMPOS DO MODELO</p><h3>Cadastro completo, sem excesso</h3><p>O modelo contempla identificação, contato autorizado, endereço, território e referência escolar. Os campos específicos do Censo+ serão alinhados à sequência oficial antes da importação real.</p><div class="field-chips"><span>nome_completo</span><span>telefone_aluno</span><span>telefone_responsavel</span><span>canal_contato_autorizado</span><span>cep</span><span>bairro</span><span>zona_territorial</span><span>codigo_censo</span></div><a href="docs/PRIVACIDADE-E-SEGURANCA.md" target="_blank" rel="noopener">Ler política de importação →</a></article>
+              </div>
+              <div id="import-preview" class="hidden panel import-preview"></div>
+            </section>
+
+            <section id="view-admin" class="view" aria-labelledby="admin-title">
+              <div class="page-intro"><div><span class="kicker">GESTÃO</span><h2 id="admin-title">Visão de coordenação</h2><p>Este painel fica disponível apenas para contas autorizadas pela administração.</p></div></div>
+              <div id="admin-content"></div>
+            </section>
+
+            <section id="view-help" class="view" aria-labelledby="help-title">
+              <div class="page-intro"><div><span class="kicker">APRENDIZADO RÁPIDO</span><h2 id="help-title">Guia interativo</h2><p>Uma rotina simples para você começar com segurança, sem pular etapas importantes.</p></div><button id="start-tour" class="button button-primary" type="button">Iniciar tour guiado</button></div>
+              <div class="help-journey">
+                <article><span>01</span><h3>Confirme seu perfil</h3><p>Use seu nome profissional e mantenha seus dados de acesso atualizados.</p></article>
+                <article><span>02</span><h3>Crie uma turma</h3><p>Informe modalidade, local e horário para facilitar sua rotina.</p></article>
+                <article><span>03</span><h3>Cadastre ou importe</h3><p>Adicione alunos um a um ou revise um CSV antes de salvar.</p></article>
+                <article><span>04</span><h3>Registre e acompanhe</h3><p>Salve a chamada e gere relatórios de evolução no fim do período.</p></article>
+              </div>
+              <div id="help-accordions" class="accordion-group"></div>
+            </section>
+          </main>
+        </div>
+      </div>
+    </div>
+
+    <div id="toast-region" class="toast-region" aria-live="polite" aria-atomic="true"></div>
+
+    <dialog id="profile-dialog" class="dialog profile-dialog" aria-labelledby="profile-dialog-title">
+      <form id="profile-form" method="dialog">
+        <div class="dialog-heading"><div><p class="eyebrow">PRIMEIRO ACESSO</p><h2 id="profile-dialog-title">Confirme seu perfil profissional</h2></div><button class="icon-button dialog-close" type="button" data-close-dialog="profile-dialog" aria-label="Fechar">×</button></div>
+        <p class="muted">Esses dados identificam o professor responsável pelas turmas. Não inclua dados de alunos aqui.</p>
+        <div class="form-grid">
+          <label class="full-width">Nome profissional<input name="displayName" required maxlength="80" autocomplete="name" /></label>
+          <label>Telefone profissional<input name="phone" inputmode="tel" maxlength="20" autocomplete="tel" /></label>
+          <label>Modalidade principal<input name="specialty" maxlength="80" placeholder="Ex.: modalidade esportiva" /></label>
+          <label class="full-width">Unidade ou polo de referência<input name="organization" maxlength="120" placeholder="Ex.: unidade, polo ou projeto" /></label>
+        </div>
+        <p id="profile-form-message" class="form-message" role="status"></p>
+        <div class="dialog-actions"><button class="button button-secondary" type="button" data-close-dialog="profile-dialog">Cancelar</button><button class="button button-primary" type="submit">Salvar perfil</button></div>
+      </form>
+    </dialog>
+
+    <dialog id="class-dialog" class="dialog" aria-labelledby="class-dialog-title">
+      <form id="class-form" method="dialog">
+        <div class="dialog-heading"><div><p class="eyebrow">TURMA</p><h2 id="class-dialog-title">Cadastrar turma</h2></div><button class="icon-button dialog-close" type="button" data-close-dialog="class-dialog" aria-label="Fechar">×</button></div>
+        <input name="classId" type="hidden" />
+        <div class="form-grid">
+          <label class="full-width">Nome da turma<input name="name" required maxlength="100" placeholder="Ex.: identificação interna da turma" /></label>
+          <label>Modalidade<input name="sport" required maxlength="80" placeholder="Modalidade esportiva" /></label>
+          <label>Faixa etária<input name="ageGroup" maxlength="60" placeholder="Faixa etária" /></label>
+          <label>Local / polo<input name="location" maxlength="120" placeholder="Local da atividade" /></label>
+          <label>Dias e horário<input name="schedule" maxlength="100" placeholder="Ex.: dias e horário" /></label>
+          <label class="full-width">Observação operacional<textarea name="notes" maxlength="500" rows="3" placeholder="Informação útil à organização da turma"></textarea></label>
+        </div>
+        <p id="class-form-message" class="form-message" role="status"></p>
+        <div class="dialog-actions"><button class="button button-secondary" type="button" data-close-dialog="class-dialog">Cancelar</button><button class="button button-primary" type="submit">Salvar turma</button></div>
+      </form>
+    </dialog>
+
+    <dialog id="student-dialog" class="dialog dialog-large" aria-labelledby="student-dialog-title">
+      <form id="student-form" method="dialog">
+        <div class="dialog-heading"><div><p class="eyebrow">ALUNO</p><h2 id="student-dialog-title">Cadastrar aluno</h2></div><button class="icon-button dialog-close" type="button" data-close-dialog="student-dialog" aria-label="Fechar">×</button></div>
+        <input name="studentId" type="hidden" />
+        <input name="classId" type="hidden" />
+        <fieldset><legend>Identificação</legend><div class="form-grid"><label class="full-width">Nome completo<input name="fullName" required maxlength="120" autocomplete="name" /></label><label>Nome social / como prefere ser chamado<input name="preferredName" maxlength="120" /></label><label>Código de matrícula<input name="enrollmentCode" maxlength="80" /></label><label>Data de nascimento<input name="birthDate" type="date" /></label><label>Gênero (opcional)<select name="gender"><option value="">Não informar</option><option value="Feminino">Feminino</option><option value="Masculino">Masculino</option><option value="Outro">Outro</option><option value="Prefiro não informar">Prefiro não informar</option></select></label></div></fieldset>
+        <fieldset><legend>Responsável e contato</legend><div class="form-grid"><label>Nome do responsável<input name="guardianName" maxlength="120" /></label><label>Telefone do responsável<input name="guardianPhone" inputmode="tel" maxlength="20" autocomplete="tel" /></label><label>Telefone do aluno <small>(somente se autorizado)</small><input name="studentPhone" inputmode="tel" maxlength="20" autocomplete="tel" /></label><label>Telefone alternativo / legado<input name="phone" inputmode="tel" maxlength="20" autocomplete="tel" /></label><label>E-mail do responsável<input name="guardianEmail" type="email" maxlength="120" /></label><label>Contato preferencial<select name="contactTarget"><option value="guardian">Responsável</option><option value="student">Aluno</option><option value="alternate">Telefone alternativo</option></select></label><label>Canal autorizado<select name="contactPermission"><option value="not_informed">Não informado</option><option value="whatsapp">WhatsApp autorizado</option><option value="call">Ligação autorizada</option><option value="both">WhatsApp e ligação autorizados</option><option value="no_contact">Não autoriza contato</option></select></label><label>Data do consentimento<input name="contactConsentDate" type="date" /></label></div><p class="fieldset-note">Os botões de WhatsApp e ligação só aparecem após a indicação do canal autorizado e sempre exigem clique manual do professor.</p></fieldset>
+        <fieldset><legend>Endereço</legend><div class="form-grid"><label>CEP<input name="postalCode" inputmode="numeric" maxlength="10" autocomplete="postal-code" /></label><label>UF<input name="state" maxlength="2" autocomplete="address-level1" /></label><label class="full-width">Logradouro<input name="street" maxlength="140" autocomplete="street-address" /></label><label>Número<input name="number" maxlength="20" /></label><label>Complemento<input name="complement" maxlength="80" /></label><label>Bairro<input name="neighborhood" maxlength="100" /></label><label>Cidade<input name="city" maxlength="100" autocomplete="address-level2" /></label></div></fieldset>
+        <fieldset><legend>Referência escolar e Censo+</legend><div class="form-grid"><label>Escola / unidade de referência<input name="school" maxlength="140" /></label><label>Turno<select name="shift"><option value="">Não informar</option><option>Manhã</option><option>Tarde</option><option>Noite</option><option>Integral</option></select></label><label>Código externo / censo<input name="censusCode" maxlength="80" /></label><label>Identificador da integração Censo+<input name="censusIntegrationId" maxlength="80" /></label><label>Referência da coleta<input name="censusReferenceDate" type="date" /></label><label>Status da revisão Censo+<select name="censusReviewStatus"><option value="pending">Aguardando sequência oficial</option><option value="reviewed">Revisado</option><option value="not_applicable">Não se aplica</option></select></label><label>Situação da matrícula<select name="enrollmentStatus"><option value="Ativa">Ativa</option><option value="Pendente">Pendente</option><option value="Inativa">Inativa</option></select></label><label>Zona territorial<select id="student-territory-zone" name="territoryZoneId"><option value="">Nenhuma zona selecionada</option></select></label><label>Setor / zona<input name="territorySector" maxlength="100" readonly placeholder="Preenchido pela camada aprovada" /></label><label class="full-width">Observações operacionais<textarea name="notes" maxlength="500" rows="3" placeholder="Evite registrar informação sensível sem autorização e base legal."></textarea></label></div><input name="territoryZoneName" type="hidden" /><input name="territorySource" type="hidden" /><p id="territory-field-help" class="fieldset-note">A seleção é manual até a gestão importar uma camada territorial aprovada. Não há geocodificação de endereço.</p></fieldset>
+        <p id="student-form-message" class="form-message" role="status"></p>
+        <div class="dialog-actions"><button class="button button-secondary" type="button" data-close-dialog="student-dialog">Cancelar</button><button class="button button-primary" type="submit">Salvar aluno</button></div>
+      </form>
+    </dialog>
+
+    <dialog id="territory-import-dialog" class="dialog dialog-large" aria-labelledby="territory-import-title">
+      <form id="territory-import-form" method="dialog">
+        <div class="dialog-heading"><div><p class="eyebrow">GESTÃO TERRITORIAL</p><h2 id="territory-import-title">Importar camada de zonas</h2></div><button class="icon-button dialog-close" type="button" data-close-dialog="territory-import-dialog" aria-label="Fechar">×</button></div>
+        <p class="muted">Envie somente GeoJSON de bairros, setores ou zonas aprovado pela gestão. O arquivo não pode conter endereços, nomes ou coordenadas de residência.</p>
+        <fieldset><legend>Camada territorial</legend><div class="form-grid"><label class="full-width">Arquivo GeoJSON<input id="territory-geojson-file" type="file" accept=".geojson,.json,application/geo+json,application/json" required /></label><label>Nome da propriedade com a zona<input name="zoneNameProperty" maxlength="60" placeholder="Ex.: nome" value="name" /></label><label>Nome da propriedade com o setor<input name="sectorProperty" maxlength="60" placeholder="Ex.: setor" value="sector" /></label><label class="full-width">Fonte e versão aprovadas<input name="sourceVersion" maxlength="180" placeholder="Ex.: Prefeitura/IBGE · versão e data" required /></label></div></fieldset>
+        <p id="territory-import-message" class="form-message" role="status"></p>
+        <div class="dialog-actions"><button class="button button-secondary" type="button" data-close-dialog="territory-import-dialog">Cancelar</button><button class="button button-primary" type="submit">Validar e importar zonas</button></div>
+      </form>
+    </dialog>
+
+    <dialog id="tour-dialog" class="dialog tour-dialog" aria-labelledby="tour-title">
+      <div class="dialog-heading"><div><p id="tour-step" class="eyebrow">TOUR 1 DE 4</p><h2 id="tour-title">Seu ponto de partida</h2></div><button class="icon-button dialog-close" type="button" data-close-dialog="tour-dialog" aria-label="Fechar">×</button></div>
+      <p id="tour-body"></p>
+      <div class="tour-progress"><span id="tour-progress-bar"></span></div>
+      <div class="dialog-actions"><button id="tour-back" class="button button-secondary" type="button">Voltar</button><button id="tour-next" class="button button-primary" type="button">Próximo</button></div>
+    </dialog>
+
+    <script src="firebase-config.js"></script>
+    <script type="module" src="assets/app.js"></script>
+  </body>
+</html>
