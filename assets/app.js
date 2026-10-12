@@ -105,13 +105,13 @@ const state = {
 let firebase = { app: null, auth: null, db: null, provider: null };
 
 bootstrap().catch((error) => {
-  console.error("Initialization failed", error);
+  console.error("Erro ao iniciar o aplicativo:", error);
   document.getElementById("loading-screen")?.classList.add("hidden");
   document.getElementById("auth-screen")?.classList.remove("hidden");
-  const message = document.getElementById("auth-message");
-  if (message) {
-    message.textContent = "Falha na inicialização: " + (error?.message || "erro desconhecido");
-    message.classList.remove("hidden");
+  const warning = document.getElementById("auth-message");
+  if (warning) {
+    warning.textContent = "Erro na inicialização: " + (error?.message || String(error));
+    warning.classList.remove("hidden");
   }
 });
 
@@ -135,13 +135,13 @@ async function bootstrap() {
     firebase = createFirebase(window.FIREBASE_CONFIG);
     state.firebaseEnabled = true;
     onAuthStateChanged(firebase.auth, handleFirebaseUser, (error) => {
-      console.error("Firebase auth observer failed", error);
+      console.error("Firebase auth listener error:", error);
       finishLoading();
       showAuthScreen();
-      showAuthMessage(friendlyFirebaseError(error));
+      showAuthMessage("Falha ao conectar com a autenticação: " + friendlyFirebaseError(error));
     });
     getRedirectResult(firebase.auth).catch((error) => {
-      console.error("Firebase redirect failed", error);
+      console.error("Firebase redirect error:", error);
       showAuthMessage(friendlyFirebaseError(error));
     });
   } catch (error) {
