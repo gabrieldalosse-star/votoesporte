@@ -1,0 +1,756 @@
+{
+  "type": "FeatureCollection",
+  "name": "Votorantim_bairros_cadastro_sem_geometria",
+  "features": [
+    {
+      "type": "Feature",
+      "properties": {
+        "id": "BAI-001",
+        "bairro_original": "CONJUNTO HABITACIONAL JARDIM SERRANO",
+        "setor": null,
+        "status_geometria": "pendente_fonte_geografica"
+      },
+      "geometry": null
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "id": "BAI-002",
+        "bairro_original": "VILA DOMINGUES",
+        "setor": null,
+        "status_geometria": "pendente_fonte_geografica"
+      },
+      "geometry": null
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "id": "BAI-003",
+        "bairro_original": "JD RESID CHACARA ONDINA",
+        "setor": "oeste",
+        "status_geometria": "pendente_fonte_geografica"
+      },
+      "geometry": null
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "id": "BAI-004",
+        "bairro_original": "PRO-MORAR",
+        "setor": null,
+        "status_geometria": "pendente_fonte_geografica"
+      },
+      "geometry": null
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "id": "BAI-005",
+        "bairro_original": "JARDIM MARIA LÃšCIA",
+        "setor": "centro",
+        "status_geometria": "pendente_fonte_geografica"
+      },
+      "geometry": null
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "id": "BAI-006",
+        "bairro_original": "COLINAS S. MONICA",
+        "setor": null,
+        "status_geometria": "pendente_fonte_geografica"
+      },
+      "geometry": null
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "id": "BAI-007",
+        "bairro_original": "RESIDENCIAL VASQUES MARTINS",
+        "setor": "leste",
+        "status_geometria": "pendente_fonte_geografica"
+      },
+      "geometry": null
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "id": "BAI-008",
+        "bairro_original": "COLINA SANTA MÃ”NICA",
+        "setor": null,
+        "status_geometria": "pendente_fonte_geografica"
+      },
+      "geometry": null
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "id": "BAI-009",
+        "bairro_original": "JARDIM EUROPA",
+        "setor": "sul",
+        "status_geometria": "pendente_fonte_geografica"
+      },
+      "geometry": null
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "id": "BAI-010",
+        "bairro_original": "JARDIM SERRANO 2",
+        "setor": null,
+        "status_geometria": "pendente_fonte_geografica"
+      },
+      "geometry": null
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "id": "BAI-011",
+        "bairro_original": "NOVA VOTORANTIM",
+        "setor": null,
+        "status_geometria": "pendente_fonte_geografica"
+      },
+      "geometry": null
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "id": "BAI-012",
+        "bairro_original": "JARDIM SÃƒO LUÃS",
+        "setor": null,
+        "status_geometria": "pendente_fonte_geografica"
+      },
+      "geometry": null
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "id": "BAI-013",
+        "bairro_original": "VOSSOROCA",
+        "setor": null,
+        "status_geometria": "pendente_fonte_geografica"
+      },
+      "geometry": null
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "id": "BAI-014",
+        "bairro_original": "JARDIM UNIÃƒO",
+        "setor": null,
+        "status_geometria": "pendente_fonte_geografica"
+      },
+      "geometry": null
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "id": "BAI-015",
+        "bairro_original": "JARDIM DANIEL ANTÃ”NIO",
+        "setor": null,
+        "status_geometria": "pendente_fonte_geografica"
+      },
+      "geometry": null
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "id": "BAI-016",
+        "bairro_original": "VALE DO SOL",
+        "setor": null,
+        "status_geometria": "pendente_fonte_geografica"
+      },
+      "geometry": null
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "id": "BAI-017",
+        "bairro_original": "JARDIM SÃƒO LUCAS",
+        "setor": null,
+        "status_geometria": "pendente_fonte_geografica"
+      },
+      "geometry": null
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "id": "BAI-018",
+        "bairro_original": "JARDIM MONTE SIÃƒO",
+        "setor": null,
+        "status_geometria": "pendente_fonte_geografica"
+      },
+      "geometry": null
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "id": "BAI-019",
+        "bairro_original": "PARQUE SANTOS DUMONT",
+        "setor": null,
+        "status_geometria": "pendente_fonte_geografica"
+      },
+      "geometry": null
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "id": "BAI-020",
+        "bairro_original": "JARDIM BANDEIRANTES",
+        "setor": null,
+        "status_geometria": "pendente_fonte_geografica"
+      },
+      "geometry": null
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "id": "BAI-021",
+        "bairro_original": "PARQUE SÃƒO JOÃƒO",
+        "setor": null,
+        "status_geometria": "pendente_fonte_geografica"
+      },
+      "geometry": null
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "id": "BAI-022",
+        "bairro_original": "VOTORANTIM PARK I",
+        "setor": null,
+        "status_geometria": "pendente_fonte_geografica"
+      },
+      "geometry": null
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "id": "BAI-023",
+        "bairro_original": "JARDIM PAULISTA",
+        "setor": null,
+        "status_geometria": "pendente_fonte_geografica"
+      },
+      "geometry": null
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "id": "BAI-024",
+        "bairro_original": "JD RESIDENCIAL CHÃCARA ONDINA",
+        "setor": null,
+        "status_geometria": "pendente_fonte_geografica"
+      },
+      "geometry": null
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "id": "BAI-025",
+        "bairro_original": "VILA VASQUES",
+        "setor": null,
+        "status_geometria": "pendente_fonte_geografica"
+      },
+      "geometry": null
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "id": "BAI-026",
+        "bairro_original": "JD. ARAÃšJO",
+        "setor": null,
+        "status_geometria": "pendente_fonte_geografica"
+      },
+      "geometry": null
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "id": "BAI-027",
+        "bairro_original": "CENTRO",
+        "setor": null,
+        "status_geometria": "pendente_fonte_geografica"
+      },
+      "geometry": null
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "id": "BAI-028",
+        "bairro_original": "JARDIM ANA CLAUDIA",
+        "setor": null,
+        "status_geometria": "pendente_fonte_geografica"
+      },
+      "geometry": null
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "id": "BAI-029",
+        "bairro_original": "CONJUNTO HABITACIONAL VOTORANTIM C",
+        "setor": null,
+        "status_geometria": "pendente_fonte_geografica"
+      },
+      "geometry": null
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "id": "BAI-030",
+        "bairro_original": "JARDIM SANTO ANTÃ”NIO II",
+        "setor": null,
+        "status_geometria": "pendente_fonte_geografica"
+      },
+      "geometry": null
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "id": "BAI-031",
+        "bairro_original": "JARDIM SÃƒO MATHEUS",
+        "setor": null,
+        "status_geometria": "pendente_fonte_geografica"
+      },
+      "geometry": null
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "id": "BAI-032",
+        "bairro_original": "JARDIM ARAÃšJO",
+        "setor": null,
+        "status_geometria": "pendente_fonte_geografica"
+      },
+      "geometry": null
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "id": "BAI-033",
+        "bairro_original": "JARDIM ANTÃ”NIO RODRIGUES E RODRIGUES",
+        "setor": null,
+        "status_geometria": "pendente_fonte_geografica"
+      },
+      "geometry": null
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "id": "BAI-034",
+        "bairro_original": "JARDIM ANTÃ”NIO CASSILLO",
+        "setor": null,
+        "status_geometria": "pendente_fonte_geografica"
+      },
+      "geometry": null
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "id": "BAI-035",
+        "bairro_original": "JARDIM ARCHILA",
+        "setor": null,
+        "status_geometria": "pendente_fonte_geografica"
+      },
+      "geometry": null
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "id": "BAI-036",
+        "bairro_original": "VILA GUILHERME",
+        "setor": null,
+        "status_geometria": "pendente_fonte_geografica"
+      },
+      "geometry": null
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "id": "BAI-037",
+        "bairro_original": "JARDIM RESIDENCIAL CHÃCARA ONDINA",
+        "setor": null,
+        "status_geometria": "pendente_fonte_geografica"
+      },
+      "geometry": null
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "id": "BAI-038",
+        "bairro_original": "JARDIM SAO MATHEUS",
+        "setor": null,
+        "status_geometria": "pendente_fonte_geografica"
+      },
+      "geometry": null
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "id": "BAI-039",
+        "bairro_original": "ALTOS DA FORTALEZA",
+        "setor": null,
+        "status_geometria": "pendente_fonte_geografica"
+      },
+      "geometry": null
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "id": "BAI-040",
+        "bairro_original": "VILA NOVA",
+        "setor": null,
+        "status_geometria": "pendente_fonte_geografica"
+      },
+      "geometry": null
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "id": "BAI-041",
+        "bairro_original": "JARDIM RESIDENCIAL CHACARA ONDINA",
+        "setor": null,
+        "status_geometria": "pendente_fonte_geografica"
+      },
+      "geometry": null
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "id": "BAI-042",
+        "bairro_original": "VILA JOSÃ‰ RAMOS",
+        "setor": null,
+        "status_geometria": "pendente_fonte_geografica"
+      },
+      "geometry": null
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "id": "BAI-043",
+        "bairro_original": "LOTEAMENTO JARDIM NOVA VOTORANTIM",
+        "setor": null,
+        "status_geometria": "pendente_fonte_geografica"
+      },
+      "geometry": null
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "id": "BAI-044",
+        "bairro_original": "PARQUE BELA VISTA",
+        "setor": null,
+        "status_geometria": "pendente_fonte_geografica"
+      },
+      "geometry": null
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "id": "BAI-045",
+        "bairro_original": "JARDIM TOLEDO",
+        "setor": null,
+        "status_geometria": "pendente_fonte_geografica"
+      },
+      "geometry": null
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "id": "BAI-046",
+        "bairro_original": "JARDIM SIMONE",
+        "setor": null,
+        "status_geometria": "pendente_fonte_geografica"
+      },
+      "geometry": null
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "id": "BAI-047",
+        "bairro_original": "JARDIM SERRANO",
+        "setor": null,
+        "status_geometria": "pendente_fonte_geografica"
+      },
+      "geometry": null
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "id": "BAI-048",
+        "bairro_original": "RESIDENCIAL VOTORANTIM PARK II",
+        "setor": null,
+        "status_geometria": "pendente_fonte_geografica"
+      },
+      "geometry": null
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "id": "BAI-049",
+        "bairro_original": "VILA AMORIM",
+        "setor": null,
+        "status_geometria": "pendente_fonte_geografica"
+      },
+      "geometry": null
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "id": "BAI-050",
+        "bairro_original": "VILA RODRIGUES",
+        "setor": null,
+        "status_geometria": "pendente_fonte_geografica"
+      },
+      "geometry": null
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "id": "BAI-051",
+        "bairro_original": "CHAVE",
+        "setor": null,
+        "status_geometria": "pendente_fonte_geografica"
+      },
+      "geometry": null
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "id": "BAI-052",
+        "bairro_original": "VILA DOMINGUINHO",
+        "setor": null,
+        "status_geometria": "pendente_fonte_geografica"
+      },
+      "geometry": null
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "id": "BAI-053",
+        "bairro_original": "JD. ARCO IRIS",
+        "setor": null,
+        "status_geometria": "pendente_fonte_geografica"
+      },
+      "geometry": null
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "id": "BAI-054",
+        "bairro_original": "RESIDENCIAL VOTORANTIM PARK I",
+        "setor": null,
+        "status_geometria": "pendente_fonte_geografica"
+      },
+      "geometry": null
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "id": "BAI-055",
+        "bairro_original": "ALTOS DE VOTORANTIM",
+        "setor": null,
+        "status_geometria": "pendente_fonte_geografica"
+      },
+      "geometry": null
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "id": "BAI-056",
+        "bairro_original": "VILA GALI",
+        "setor": null,
+        "status_geometria": "pendente_fonte_geografica"
+      },
+      "geometry": null
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "id": "BAI-057",
+        "bairro_original": "PARQUE JATAÃ",
+        "setor": null,
+        "status_geometria": "pendente_fonte_geografica"
+      },
+      "geometry": null
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "id": "BAI-058",
+        "bairro_original": "JD. SÃƒO PEDRO",
+        "setor": null,
+        "status_geometria": "pendente_fonte_geografica"
+      },
+      "geometry": null
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "id": "BAI-059",
+        "bairro_original": "JD. IBITI DO PASSO",
+        "setor": null,
+        "status_geometria": "pendente_fonte_geografica"
+      },
+      "geometry": null
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "id": "BAI-060",
+        "bairro_original": "VILA DYLZE",
+        "setor": null,
+        "status_geometria": "pendente_fonte_geografica"
+      },
+      "geometry": null
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "id": "BAI-061",
+        "bairro_original": "CONJ. HABITACIONAL JARDIM SERRANO",
+        "setor": null,
+        "status_geometria": "pendente_fonte_geografica"
+      },
+      "geometry": null
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "id": "BAI-062",
+        "bairro_original": "PARQUE SANTA MÃRCIA",
+        "setor": null,
+        "status_geometria": "pendente_fonte_geografica"
+      },
+      "geometry": null
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "id": "BAI-063",
+        "bairro_original": "RIO ACIMA",
+        "setor": null,
+        "status_geometria": "pendente_fonte_geografica"
+      },
+      "geometry": null
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "id": "BAI-064",
+        "bairro_original": "JARDIM SARKIS ABIBE",
+        "setor": null,
+        "status_geometria": "pendente_fonte_geografica"
+      },
+      "geometry": null
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "id": "BAI-065",
+        "bairro_original": "VILA VOTOCEL",
+        "setor": null,
+        "status_geometria": "pendente_fonte_geografica"
+      },
+      "geometry": null
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "id": "BAI-066",
+        "bairro_original": "JARDIM MIRANTE DOS OVNIS",
+        "setor": null,
+        "status_geometria": "pendente_fonte_geografica"
+      },
+      "geometry": null
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "id": "BAI-067",
+        "bairro_original": "BARRA FUNDA",
+        "setor": null,
+        "status_geometria": "pendente_fonte_geografica"
+      },
+      "geometry": null
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "id": "BAI-068",
+        "bairro_original": "JARDIM CLARICE I",
+        "setor": null,
+        "status_geometria": "pendente_fonte_geografica"
+      },
+      "geometry": null
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "id": "BAI-069",
+        "bairro_original": "JARDIM ICATU",
+        "setor": null,
+        "status_geometria": "pendente_fonte_geografica"
+      },
+      "geometry": null
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "id": "BAI-070",
+        "bairro_original": "JARDIM DAS COLINAS",
+        "setor": null,
+        "status_geometria": "pendente_fonte_geografica"
+      },
+      "geometry": null
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "id": "BAI-071",
+        "bairro_original": "VILA ANGELO VIAL",
+        "setor": null,
+        "status_geometria": "pendente_fonte_geografica"
+      },
+      "geometry": null
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "id": "BAI-072",
+        "bairro_original": "JARDIM NOVO MUNDO",
+        "setor": null,
+        "status_geometria": "pendente_fonte_geografica"
+      },
+      "geometry": null
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "id": "BAI-073",
+        "bairro_original": "PARQUE MORUMBI",
+        "setor": null,
+        "status_geometria": "pendente_fonte_geografica"
+      },
+      "geometry": null
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "id": "BAI-074",
+        "bairro_original": "FORNAZARI",
+        "setor": null,
+        "status_geometria": "pendente_fonte_geografica"
+      },
+      "geometry": null
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "id": "BAI-075",
+        "bairro_original": "JARDIM KAROLYNE",
+        "setor": null,
+        "status_geometria": "pendente_fonte_geografica"
+      },
+      "geometry": null
+    }
+  ]
+}
