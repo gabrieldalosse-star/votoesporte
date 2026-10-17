@@ -26,7 +26,7 @@ Este pacote contém somente arquivos de código, regras e modelos vazios. Não c
 
 ## Mapa e bairros
 
-O arquivo `data/votorantim-limite-municipal-ibge-2024.geojson` é o limite municipal oficial. Ele não é uma malha de bairros.
+O arquivo `data/votorantim-contorno-ilustrativo.geojson` é apenas um contorno ESQUEMÁTICO de procedência não verificada. Não utilizar como limite oficial ou referência de zoneamento.
 
 Os gráficos contam alunos por bairro informado no cadastro, mesmo quando ainda não há polígono. Para desenhar bairros, importe no painel administrativo apenas uma camada GeoJSON/KML/Shapefile autorizada. Não use uma cópia de cartografia do Google Maps como GeoJSON.
 

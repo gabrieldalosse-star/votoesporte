@@ -15,6 +15,10 @@ service cloud.firestore {
         exists(/databases/$(database)/documents/adminUsers/$(request.auth.uid));
     }
 
+    function isPasswordTeacher() {
+      return signedIn() && request.auth.token.firebase.sign_in_provider == 'password';
+    }
+
     function isSelf(userId) {
       return signedIn() && request.auth.uid == userId;
     }
@@ -26,7 +30,7 @@ service cloud.firestore {
     }
 
     function canAccessClass(classId) {
-      return isAdmin() || ownsClass(classId);
+      return isAdmin() || (isPasswordTeacher() && ownsClass(classId));
     }
 
     // Keep browser clients constrained to the fields this MVP actually uses.
@@ -132,11 +136,11 @@ service cloud.firestore {
     function validAttendance(data, classId, sessionId) {
       return data.keys().hasOnly([
           'date', 'sessionTime', 'classId', 'className', 'teacherId', 'teacherName', 'records',
-          'markedCount', 'presentCount', 'absentCount', 'updatedAt'
+          'markedCount', 'presentCount', 'absentCount', 'justifiedCount', 'updatedAt'
         ]) &&
         data.keys().hasAll([
           'date', 'sessionTime', 'classId', 'className', 'teacherId', 'teacherName', 'records',
-          'markedCount', 'presentCount', 'absentCount', 'updatedAt'
+          'markedCount', 'presentCount', 'absentCount', 'justifiedCount', 'updatedAt'
         ]) &&
         data.date is string && data.date == sessionId && data.date.size() == 10 &&
         data.sessionTime is string && data.sessionTime.size() == 5 &&
@@ -148,7 +152,8 @@ service cloud.firestore {
         data.markedCount is int && data.markedCount > 0 && data.markedCount <= data.records.size() &&
         data.presentCount is int && data.presentCount >= 0 && data.presentCount <= data.markedCount &&
         data.absentCount is int && data.absentCount >= 0 && data.absentCount <= data.markedCount &&
-        data.presentCount + data.absentCount == data.markedCount &&
+        data.justifiedCount is int && data.justifiedCount >= 0 && data.justifiedCount <= data.markedCount &&
+        data.presentCount + data.absentCount + data.justifiedCount == data.markedCount &&
         data.updatedAt is timestamp;
     }
 
@@ -198,13 +203,13 @@ service cloud.firestore {
     // A signed-in person may maintain only their own profile. Administrative
     // authorization is never derived from this document.
     match /users/{userId} {
-      allow read: if isSelf(userId) || isAdmin();
+      allow read: if (isPasswordTeacher() && isSelf(userId)) || isAdmin();
       // The client may create only a normal teacher profile, and can never
       // promote that profile later. Admin rights come exclusively from
       // adminUsers/{uid}, provisioned by a trusted server or Console.
-      allow create: if isSelf(userId) &&
+      allow create: if (isPasswordTeacher() || isAdmin()) && isSelf(userId) &&
         request.resource.data.role == "teacher";
-      allow update: if isSelf(userId) &&
+      allow update: if (isPasswordTeacher() || isAdmin()) && isSelf(userId) &&
         request.resource.data.role == resource.data.role &&
         resource.data.role == "teacher";
       allow delete: if isAdmin();
@@ -232,17 +237,17 @@ service cloud.firestore {
 
     match /classes/{classId} {
       allow read: if isAdmin() ||
-        (signedIn() && resource.data.teacherId == request.auth.uid);
+        (isPasswordTeacher() && resource.data.teacherId == request.auth.uid);
 
       // A teacher can create a class only when assigning it to themself.
       allow create: if validNewClass(request.resource.data) &&
         (isAdmin() ||
-          (signedIn() && request.resource.data.teacherId == request.auth.uid));
+          (isPasswordTeacher() && request.resource.data.teacherId == request.auth.uid));
 
       // Do not let a teacher transfer a class to a different account.
       allow update: if validClass(request.resource.data) &&
         (isAdmin() ||
-        (signedIn() &&
+        (isPasswordTeacher() &&
           resource.data.teacherId == request.auth.uid &&
           request.resource.data.teacherId == resource.data.teacherId));
 
@@ -265,6 +270,32 @@ service cloud.firestore {
         allow create, update: if canAccessClass(classId) &&
           validAttendance(request.resource.data, classId, sessionId);
       }
+    }
+
+
+
+    function validOccurrence(data) {
+      return data.keys().hasOnly([
+          'classId','className','teacherId','teacherName','studentId','studentName','date','time','type','description','createdAt','updatedAt'
+        ]) &&
+        data.keys().hasAll(['classId','className','teacherId','teacherName','date','time','type','description','createdAt','updatedAt']) &&
+        data.classId is string && data.classId.size() > 0 && data.classId.size() <= 160 &&
+        data.className is string && data.className.size() <= 120 &&
+        data.teacherId is string && data.teacherId == getAfter(/databases/$(database)/documents/classes/$(data.classId)).data.teacherId &&
+        data.teacherName is string && data.teacherName.size() <= 120 &&
+        optionalText(data, 'studentId', 160) &&
+        optionalText(data, 'studentName', 120) &&
+        data.date is string && data.date.size() == 10 &&
+        data.time is string && data.time.size() == 5 &&
+        data.type is string && data.type.size() > 0 && data.type.size() <= 80 &&
+        data.description is string && data.description.size() > 0 && data.description.size() <= 600 &&
+        data.createdAt is timestamp && data.updatedAt is timestamp;
+    }
+
+    match /occurrences/{occurrenceId} {
+      allow read: if isAdmin() || (isPasswordTeacher() && resource.data.teacherId == request.auth.uid);
+      allow create, update: if validOccurrence(request.resource.data) && (isAdmin() || (isPasswordTeacher() && request.resource.data.teacherId == request.auth.uid));
+      allow delete: if isAdmin();
     }
 
     match /deletionAudit/{auditId} {

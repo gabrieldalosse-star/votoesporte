@@ -8,7 +8,7 @@
       content="Sistema integrado de censo esportivo, matrículas, cobertura territorial e gestão de atividades de Votorantim."
     />
     <meta name="theme-color" content="#063b79" />
-    <title>Censo Esportivo de Votorantim · Gestão Municipal</title>
+    <title>VotoEsporte · Gestão Municipal de Votorantim</title>
     <link rel="icon" href="assets/favicon.svg" type="image/svg+xml" />
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin="" />
     <link rel="stylesheet" href="assets/styles.css" />
@@ -57,14 +57,24 @@
             </div>
           </div>
           <p class="eyebrow">ACESSO DA EQUIPE</p>
-          <h2>Entre com sua conta Google</h2>
-          <p class="muted">Use a conta autorizada pela coordenação. O primeiro acesso pede a confirmação do seu perfil.</p>
+          <h2>Entrar no VotoEsporte</h2>
+          <p class="muted">Professores podem entrar com <strong>e-mail e senha</strong>. A coordenação/administrador pode continuar usando <strong>Google</strong>.</p>
           <button id="google-sign-in" class="button button-primary button-google" type="button">
             <svg aria-hidden="true" viewBox="0 0 24 24"><path fill="#4285f4" d="M21.35 12.27c0-.79-.07-1.55-.22-2.27H12v4.3h5.22a4.46 4.46 0 0 1-1.94 2.92v2.79h3.59c2.1-1.94 3.48-4.8 3.48-7.74Z"/><path fill="#34a853" d="M12 21.72c2.62 0 4.82-.87 6.43-2.36l-3.59-2.79c-1 .67-2.27 1.06-3.84 1.06-2.55 0-4.71-1.72-5.48-4.03H1.8v2.88A9.72 9.72 0 0 0 12 21.72Z"/><path fill="#fbbc05" d="M6.52 13.6A5.85 5.85 0 0 1 6.21 12c0-.56.1-1.1.3-1.6V7.52H2.8A9.72 9.72 0 0 0 2.8 16.5l3.72-2.9Z"/><path fill="#ea4335" d="M12 6.37c1.75 0 3.32.6 4.55 1.78l3.42-3.42C16.81 1.79 14.61.28 12 .28A9.72 9.72 0 0 0 1.8 7.52l3.72 2.88C6.3 8.09 8.45 6.37 12 6.37Z"/></svg>
-            Continuar com Google
+            Entrar com Google (admin)
           </button>
+          <div class="auth-divider"><span>ou</span></div>
+          <form id="email-auth-form" class="email-auth-form">
+            <label>E-mail<input id="auth-email" type="email" autocomplete="username" placeholder="professor@exemplo.com" required /></label>
+            <label>Senha<input id="auth-password" type="password" autocomplete="current-password" minlength="6" placeholder="Mínimo 6 caracteres" required /></label>
+            <div class="auth-form-actions">
+              <button id="email-sign-in" class="button button-primary" type="submit">Entrar com e-mail</button>
+              <button id="email-sign-up" class="button button-secondary" type="button">Criar conta</button>
+            </div>
+          </form>
           <button id="demo-sign-in" class="button button-secondary hidden" type="button">Explorar em modo local</button>
           <p id="auth-message" class="form-message" role="status"></p>
+          <div class="auth-microcopy"><strong>Importante:</strong> no Firebase Authentication, ative os provedores <em>Google</em> e <em>Email/senha</em>. O acesso administrativo continua controlado pela coleção <code>adminUsers</code>.</div>
           <div class="privacy-note">
             <span aria-hidden="true">⌁</span>
             <p>Não inclua dados de alunos sem autorização institucional e base legal adequada.</p>
@@ -82,10 +92,13 @@
             <button class="nav-item active" data-view="dashboard" type="button"><span aria-hidden="true">◫</span> Visão geral do Censo</button>
             <button class="nav-item" data-view="classes" type="button"><span aria-hidden="true">◒</span> Turmas e matrículas</button>
             <button class="nav-item" data-view="attendance" type="button"><span aria-hidden="true">✓</span> Frequência das turmas</button>
+            <button class="nav-item" data-view="occurrences" type="button"><span aria-hidden="true">⚑</span> Ocorrências</button>
             <button class="nav-item" data-view="reports" type="button"><span aria-hidden="true">↗</span> Relatórios</button>
+            <button class="nav-item" data-view="modalities" type="button"><span aria-hidden="true">◆</span> Modalidades e núcleos</button>
             <button class="nav-item" data-view="territory" type="button"><span aria-hidden="true">⌖</span> Território e bairros</button>
             <button class="nav-item" data-view="import" type="button"><span aria-hidden="true">⇩</span> Importação de cadastros</button>
             <button id="admin-nav" class="nav-item hidden" data-view="admin" type="button"><span aria-hidden="true">◈</span> Gestão</button>
+            <button class="nav-item" data-view="settings" type="button"><span aria-hidden="true">◐</span> Aparência</button>
           </nav>
           <div class="sidebar-bottom">
             <button class="nav-item" data-view="help" type="button"><span aria-hidden="true">?</span> Guia interativo</button>
@@ -123,10 +136,10 @@
                   <h2 id="dashboard-title">Censo Esportivo de Votorantim</h2>
                   <p id="dashboard-subtitle">Gestão de participantes, matrículas, turmas, territórios e indicadores municipais.</p>
                 </div>
-                <button id="dashboard-add-class" class="button button-primary" type="button">+ Cadastrar turma</button>
+                <div class="dashboard-buttons"><button id="dashboard-refresh" class="button button-secondary" type="button">Atualizar indicadores</button><button id="dashboard-add-class" class="button button-primary" type="button">+ Cadastrar turma</button></div>
               </div>
               <div class="official-brand-row"><img src="assets/secretaria-esportes-original.jpg" alt="Logotipo original da Secretaria de Esportes"/><img src="assets/brasao-votorantim-original.jpg" alt="Brasão original da Prefeitura de Votorantim"/></div><div id="dashboard-stats" class="stats-grid"></div><p class="censo-count-note">Indicadores calculados sobre as turmas e cadastros disponíveis ao perfil conectado. Participantes únicos estimados por nome e nascimento quando não há identificador global; não equivalem a um cadastro municipal deduplicado.</p>
-              <section class="censo-analytics" aria-label="Análise do censo por bairro e atividade"><div class="censo-analytics-head"><div><span class="kicker">DADOS DO TERRITÓRIO</span><h3>Quem o esporte atende em Votorantim</h3><p>Os gráficos se atualizam conforme você cadastra participantes e seleciona um bairro. Nenhum dado é estimado ou inventado.</p></div><label class="censo-filter-label">Filtrar bairro<select id="censo-neighborhood-filter"><option value="">Todos os bairros</option></select></label></div><div id="censo-filter-summary" class="censo-filter-summary" aria-live="polite"></div><div class="censo-chart-grid"><article class="panel censo-chart-card"><h4>Participantes por bairro</h4><div id="censo-chart-neighborhood" class="censo-bars"></div></article><article class="panel censo-chart-card"><h4>Participações por atividade</h4><div id="censo-chart-activity" class="censo-bars"></div></article><article class="panel censo-chart-card"><h4>Faixas etárias</h4><div id="censo-chart-age" class="censo-bars"></div></article><article class="panel censo-chart-card"><h4>Distribuição por sexo</h4><div id="censo-chart-gender" class="censo-bars"></div></article></div><p class="censo-count-note">Uma pessoa pode participar de várias atividades. Gráficos de pessoas usam deduplicação aproximada por nome e nascimento; atividades contabilizam vínculos por turma. Dados restritos ao perfil conectado.</p></section><div class="censo-shortcuts"><button type="button" class="button button-primary" data-view="classes">Turmas e participantes</button><button type="button" class="button button-secondary" data-view="territory">Território</button><button type="button" class="button button-secondary" data-view="reports">Relatórios</button><button type="button" class="button button-secondary" data-view="attendance">Frequência</button></div><div class="dashboard-grid">
+              <section class="censo-analytics" aria-label="Análise do censo por bairro e atividade"><div class="censo-analytics-head"><div><span class="kicker">DADOS DO TERRITÓRIO</span><h3>Quem o esporte atende em Votorantim</h3><p>Os gráficos são atualizados conforme você cadastra participantes e seleciona um bairro. Para revisar dados de outras turmas, use Atualizar indicadores. Nenhum dado é estimado ou inventado.</p></div><label class="censo-filter-label">Filtrar bairro<select id="censo-neighborhood-filter"><option value="">Todos os bairros</option></select></label></div><div id="censo-filter-summary" class="censo-filter-summary" aria-live="polite"></div><div class="censo-chart-grid"><article class="panel censo-chart-card"><h4>Participantes por bairro</h4><div id="censo-chart-neighborhood" class="censo-bars"></div></article><article class="panel censo-chart-card"><h4>Participações por atividade</h4><div id="censo-chart-activity" class="censo-bars"></div></article><article class="panel censo-chart-card"><h4>Faixas etárias</h4><div id="censo-chart-age" class="censo-bars"></div></article><article class="panel censo-chart-card"><h4>Distribuição por sexo</h4><div id="censo-chart-gender" class="censo-bars"></div></article></div><p class="censo-count-note">Uma pessoa pode participar de várias atividades. Gráficos de pessoas usam deduplicação aproximada por nome e nascimento; atividades contabilizam vínculos por turma. Dados restritos ao perfil conectado.</p></section><div class="censo-shortcuts"><button type="button" class="button button-primary" data-view="classes">Turmas e participantes</button><button type="button" class="button button-secondary" data-view="territory">Território</button><button type="button" class="button button-secondary" data-view="reports">Relatórios</button><button type="button" class="button button-secondary" data-view="attendance">Frequência</button></div><div class="dashboard-grid">
                 <article class="panel next-action-panel">
                   <div class="panel-heading">
                     <div><p class="eyebrow">ORGANIZAÇÃO</p><h3>Turmas cadastradas</h3></div>
@@ -156,7 +169,7 @@
 
             <section id="view-attendance" class="view" aria-labelledby="attendance-title">
               <div class="page-intro attendance-intro">
-                <div><span class="kicker">PRESENÇA</span><h2 id="attendance-title">Registro de frequência</h2><p>Marque a turma, data e horário. A chamada informa quantas pessoas estavam na aula naquele momento.</p></div>
+                <div><span class="kicker">PRESENÇA</span><h2 id="attendance-title">Registro de frequência</h2><p>Marque a turma, data e horário. Use P para presente, J para falta justificada e F para falta. Se marcar J, descreva a justificativa no campo da linha.</p></div>
                 <div class="save-attendance-area"><span id="attendance-save-state" class="save-state">Sem alterações</span><button id="save-attendance" class="button button-primary" type="button">Salvar frequência</button></div>
               </div>
               <article class="panel attendance-controls">
@@ -172,6 +185,42 @@
                 </div>
                 <div id="attendance-list" class="attendance-list"></div>
               </article>
+            </section>
+
+            
+            <section id="view-occurrences" class="view" aria-labelledby="occurrences-title">
+              <div class="page-intro">
+                <div><span class="kicker">OCORRÊNCIAS</span><h2 id="occurrences-title">Registro de ocorrências</h2><p>Registre fatos relevantes por turma, horário e, se quiser, vincule a ocorrência a um aluno específico.</p></div>
+              </div>
+              <div class="occurrence-layout">
+                <article class="panel occurrence-form-panel">
+                  <div class="panel-heading"><div><p class="eyebrow">NOVO REGISTRO</p><h3>Registrar ocorrência</h3></div></div>
+                  <form id="occurrence-form" class="occurrence-form">
+                    <div class="form-grid">
+                      <label>Turma<select id="occurrence-class" name="classId" required></select></label>
+                      <label>Data<input id="occurrence-date" name="date" type="date" required /></label>
+                      <label>Horário<input id="occurrence-time" name="time" type="time" required /></label>
+                      <label>Tipo<select name="type"><option value="Comportamento">Comportamento</option><option value="Disciplina">Disciplina</option><option value="Saúde">Saúde</option><option value="Desempenho">Desempenho</option><option value="Contato com responsável">Contato com responsável</option><option value="Outro">Outro</option></select></label>
+                      <label class="full-width">Aluno (opcional)<select id="occurrence-student" name="studentId"><option value="">Sem aluno específico</option></select></label>
+                      <label class="full-width">Descrição<textarea name="description" maxlength="600" required placeholder="Descreva o que ocorreu, providências e encaminhamento."></textarea></label>
+                    </div>
+                    <p id="occurrence-form-message" class="form-message" role="status"></p>
+                    <div class="dialog-actions"><button id="save-occurrence" class="button button-primary" type="submit">Salvar ocorrência</button></div>
+                  </form>
+                </article>
+                <article class="panel occurrence-list-panel">
+                  <div class="panel-heading"><div><p class="eyebrow">HISTÓRICO</p><h3>Últimas ocorrências</h3></div><label class="occurrence-filter-inline">Filtrar turma<select id="occurrence-filter-class"><option value="all">Todas</option></select></label></div>
+                  <div id="occurrence-list" class="occurrence-list"></div>
+                </article>
+              </div>
+            </section>
+
+            
+            <section id="view-modalities" class="view" aria-labelledby="modalities-title">
+              <div class="page-intro"><div><span class="kicker">REDE DE MODALIDADES</span><h2 id="modalities-title">Modalidades e núcleos esportivos</h2><p>Resumo operacional das atividades, locais, turmas e setores, respeitando o acesso do perfil conectado.</p></div></div>
+              <div id="modalities-stats" class="stats-grid"></div>
+              <article class="panel modalities-panel"><div class="panel-heading"><div><p class="eyebrow">CATÁLOGO DINÂMICO</p><h3>Atividades cadastradas</h3></div><label>Filtrar modalidade<input id="modalities-filter" placeholder="Pesquisar atividade ou núcleo" autocomplete="off" /></label></div><div id="modalities-content" class="modalities-content"></div></article>
+              <p class="censo-count-note">O setor só aparece como confirmado quando a turma foi vinculada a uma zona territorial importada e aprovada. Nomes de locais não são geocodificados automaticamente.</p>
             </section>
 
             <section id="view-reports" class="view" aria-labelledby="reports-title">
@@ -192,15 +241,15 @@
 
             <section id="view-territory" class="view" aria-labelledby="territory-title">
               <div class="page-intro territory-intro">
-                <div><span class="kicker">TERRITÓRIO E COBERTURA</span><h2 id="territory-title">Censo Esportivo por setores</h2><p>Explore os quatro setores preliminares (Oeste, Centro, Sul e Leste) e acompanhe indicadores agregados. Endereços e pontos de residência nunca aparecem no mapa.</p></div>
+                <div><span class="kicker">TERRITÓRIO E COBERTURA</span><h2 id="territory-title">Censo Esportivo por territórios</h2><p>Visualize os territórios e núcleos aprovados pela gestão. Setores só aparecem quando uma geometria válida é importada. Endereços e pontos de residência nunca aparecem no mapa.</p></div>
                 <button id="open-territory-import" class="button button-primary hidden" type="button">Importar camada de zonas</button>
               </div>
               <div id="territory-summary" class="territory-summary"></div>
               <div class="territory-layout">
                 <article class="panel territory-map-panel">
                   <div class="panel-heading"><div><p class="eyebrow">MAPA OPERACIONAL</p><h3>Votorantim e cobertura por setor</h3></div><span id="territory-layer-status" class="pill">Carregando</span></div>
-                  <div class="official-map-box"><p><strong>Camada preliminar, não oficial:</strong> os quatro setores são uma aproximação operacional para o Censo Esportivo e são carregados do pacote do aplicativo. Eles não representam limites oficiais de bairros, zoneamento ou atendimento da Prefeitura e devem ser substituídos após validação institucional.</p><p><a href="https://www.ibge.gov.br/geociencias/organizacao-do-territorio/malhas-territoriais/15774-malhas.html" target="_blank" rel="noopener">Documentação da Malha Municipal do IBGE</a> · <a href="https://www.votorantim.sp.gov.br/portal/obras" target="_blank" rel="noopener">Catálogo público de bairros — Prefeitura</a></p></div><label class="territory-filter">Filtrar setor<select id="territory-sector-filter" aria-label="Filtrar setores do mapa"><option value="all">Todos os setores</option></select></label><div id="territory-map" class="territory-map" role="region" aria-label="Mapa municipal de Votorantim e setores preliminares"></div>
-                  <p class="territory-disclaimer">A classificação é feita por setor, não por endereço. Esta camada é aproximada e não oficial; não a use para decisões administrativas, jurídicas ou de zoneamento.</p>
+                  <div class="official-map-box"><p><strong>Geografia em revisão:</strong> a base territorial do pacote não comprova delimitações oficiais de bairros e setores. O contorno exibido é ilustrativo e as zonas reais devem ser importadas com fonte verificável e validação da gestão.</p><p><a href="https://www.ibge.gov.br/geociencias/organizacao-do-territorio/malhas-territoriais/15774-malhas.html" target="_blank" rel="noopener">Documentação da Malha Municipal do IBGE</a> · <a href="https://www.votorantim.sp.gov.br/portal/obras" target="_blank" rel="noopener">Catálogo público de bairros — Prefeitura</a></p></div><label class="territory-filter">Filtrar setor<select id="territory-sector-filter" aria-label="Filtrar setores do mapa"><option value="all">Todos os setores</option></select></label><div id="territory-map" class="territory-map" role="region" aria-label="Mapa ilustrativo de Votorantim com zonas aprovadas quando disponíveis"></div>
+                  <p class="territory-disclaimer">Não há associação geográfica automática confiável por CEP na base atual. Vincule cada turma a uma zona aprovada e confirme a localização do núcleo antes de relatórios oficiais.</p>
                 </article>
                 <article class="panel territory-zone-panel">
                   <p class="eyebrow">SETORES DISPONÍVEIS</p><h3>Revisão e cobertura</h3>
@@ -208,6 +257,7 @@
                   <a href="data/votorantim-zonas.example.geojson" download>Baixar modelo GeoJSON sem dados pessoais →</a>
                 </article>
               </div>
+              <article class="panel territory-links-panel"><div class="panel-heading"><div><p class="eyebrow">BAIRROS E NÚCLEOS</p><h3>Relações cadastradas</h3></div></div><div id="territory-links" class="territory-links"></div></article>
               <article class="panel census-guidance">
                 <div><span aria-hidden="true">◌</span><h3>Cadastros e território integrados</h3><p>O cadastro já separa identificação, contato, território e referência de censo. O formulário usa como referência os cabeçalhos da planilha Censo Willian; o Censo – Teste orienta a separação de locais, atividades e turmas.</p></div>
                 <div class="census-guidance-tags"><span>sem geocodificação de endereço</span><span>sem pinos individuais</span><span>relatórios agregados</span></div>
@@ -236,13 +286,22 @@
               <div id="admin-content"></div>
             </section>
 
+            
+            <section id="view-settings" class="view" aria-labelledby="settings-title">
+              <div class="page-intro"><div><span class="kicker">APARÊNCIA E EXPERIÊNCIA</span><h2 id="settings-title">Tema e preferências</h2><p>Deixe o VotoEsporte com a aparência institucional desejada e alterne para o modo escuro quando quiser.</p></div></div>
+              <div class="settings-grid">
+                <article class="panel settings-card"><p class="eyebrow">TEMA</p><h3>Escolha o visual</h3><div id="theme-options" class="theme-options"><button class="theme-option active" data-theme="light" type="button">Claro institucional</button><button class="theme-option" data-theme="dark" type="button">Escuro</button></div><p class="muted">A escolha é salva no navegador deste dispositivo.</p></article>
+                <article class="panel settings-card"><p class="eyebrow">MARCA</p><h3>Identidade VotoEsporte</h3><div class="brand-showcase"><div class="brand-swatch"></div><div><strong>Azul institucional + dourado</strong><p>Visual reforçado para um uso municipal, mantendo os logotipos originais da Prefeitura e da Secretaria.</p></div></div></article>
+              </div>
+            </section>
+
             <section id="view-help" class="view" aria-labelledby="help-title">
               <div class="page-intro"><div><span class="kicker">APRENDIZADO RÁPIDO</span><h2 id="help-title">Guia interativo</h2><p>Uma rotina simples para você começar com segurança, sem pular etapas importantes.</p></div><button id="start-tour" class="button button-primary" type="button">Iniciar tour guiado</button></div>
               <div class="help-journey">
                 <article><span>01</span><h3>Confirme seu perfil</h3><p>Use seu nome profissional e mantenha seus dados de acesso atualizados.</p></article>
                 <article><span>02</span><h3>Crie uma turma</h3><p>Informe modalidade, local e horário para facilitar sua rotina.</p></article>
                 <article><span>03</span><h3>Cadastre ou importe</h3><p>Adicione alunos um a um ou revise um CSV antes de salvar.</p></article>
-                <article><span>04</span><h3>Registre frequência</h3><p>Registre a presença nas atividades e acompanhe os indicadores do Censo.</p></article>
+                <article><span>04</span><h3>Registre frequência</h3><p>Registre presença, falta ou falta justificada e acompanhe indicadores em tempo real.</p></article>
               </div>
               <div id="help-accordions" class="accordion-group"></div>
             </section>
@@ -307,19 +366,18 @@
             <label class="full-width">Rua<input name="street" maxlength="140" autocomplete="street-address" /></label>
             <label>Número<input name="number" maxlength="20" /></label>
             <label>CEP<input name="postalCode" inputmode="numeric" maxlength="10" autocomplete="postal-code" /><button id="lookup-postal-code" class="text-button" type="button">Sugerir bairro pelo CEP</button><small id="postal-code-help" class="fieldset-note">Consulta opcional; confirme o bairro antes de salvar.</small></label>
-            <label>Telefone<input name="phone" inputmode="tel" maxlength="20" autocomplete="tel" /></label>
+            <label>Telefone alternativo<input name="phone" inputmode="tel" maxlength="20" autocomplete="tel" /></label><label>Telefone do aluno<input name="studentPhone" inputmode="tel" maxlength="20" autocomplete="tel" /></label>
             <label>PCD<select name="pcdStatus"><option value="">Não informado</option><option value="Sim">Sim</option><option value="Não">Não</option></select></label>
             <label class="full-width">Zona territorial aprovada<select id="student-territory-zone" name="territoryZoneId"><option value="">Nenhuma zona selecionada</option></select><small id="territory-field-help" class="fieldset-note">Opcional: selecione apenas uma zona aprovada pela gestão. O bairro continua sendo contado mesmo sem zona.</small></label>
             <label class="full-width">Nome do responsável<input name="guardianName" maxlength="120" /></label>
-            <label>Telefone do responsável<input name="guardianPhone" inputmode="tel" maxlength="20" /></label>
+            <label>Telefone do responsável<input name="guardianPhone" inputmode="tel" maxlength="20" /></label><label>Contato preferencial<select name="contactTarget"><option value="guardian">Responsável</option><option value="student">Aluno</option><option value="alternate">Alternativo</option></select></label><label>Permissão de contato<select name="contactPermission"><option value="not_informed">Não informado</option><option value="whatsapp">Somente WhatsApp</option><option value="call">Somente ligação</option><option value="both">WhatsApp e ligação</option><option value="no_contact">Não autorizado</option></select></label>
             <label>Data de cadastro<input name="registrationDate" type="date" /></label>
           </div></details>
         </fieldset>
         <datalist id="votorantim-neighborhoods"><option value="Altos de Votorantim"></option><option value="Barra Funda"></option><option value="Centro"></option><option value="Chave"></option><option value="Green Valley"></option><option value="Jardim Araújo"></option><option value="Jardim Icatu"></option><option value="Jardim Maria Lúcia"></option><option value="Jardim Novo Mundo"></option><option value="Jardim Paraíso"></option><option value="Jardim São Lucas"></option><option value="Jardim São Matheus"></option><option value="Jardim Simone"></option><option value="Jardim Tatiana"></option><option value="Jardim Toledo"></option><option value="Jardim Santo Antônio II"></option><option value="Nova Votorantim"></option><option value="Parque Bela Vista"></option><option value="Parque Jataí"></option><option value="Parque Santa Márcia"></option><option value="Parque Santos Dumont"></option><option value="Pro-Morar"></option><option value="Protestantes"></option><option value="Residencial Cristal"></option><option value="Rio Acima"></option><option value="Vila Amorim"></option><option value="Vila Angelo Vial"></option><option value="Vila Dominguinho"></option><option value="Vila Guilherme"></option><option value="Vila Pardini"></option><option value="Vila Pedroso"></option><option value="Vila Votocel"></option></datalist>
         <fieldset id="censo-student-contact" hidden>
-          <input name="preferredName" /><input name="enrollmentCode" /><input name="studentPhone" />
-          <input name="guardianEmail" /><input name="contactTarget" value="guardian" />
-          <input name="contactPermission" value="not_informed" /><input name="contactConsentDate" />
+          <input name="preferredName" /><input name="enrollmentCode" />
+          <input name="guardianEmail" /><input name="contactConsentDate" />
         </fieldset>
         <fieldset id="censo-student-address" hidden>
           <input name="state" value="SP" /><input name="complement" />
