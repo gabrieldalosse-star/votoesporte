@@ -1,0 +1,33 @@
+VOTOESPORTE V10 — ATUALIZAÇÃO VISUAL
+
+VERIFICAÇÃO DO REPOSITÓRIO (17/10/2026)
+Foi conferido o repositório github.com/gabrieldalosse-star/votoesporte.
+Os arquivos assets/app.js, firestore.rules e firebase-config.js presentes no GitHub correspondem exatamente aos da base V9 usada nesta revisão.
+Por isso, use de preferência o pacote PATCH VISUAL V10, que altera APENAS:
+
+- index.html (substituir)
+- assets/favicon.svg (substituir)
+- assets/institucional-v10.css (novo)
+- assets/comunidade-esportiva-v10.webp (novo)
+- assets/comunidade-esportiva-mobile.webp (novo)
+- assets/brasao-votorantim-original-recortado.png (novo)
+- assets/secretaria-esportes-original-recortado.png (novo)
+- assets/brand/ (novos SVGs e estudos de marca)
+
+Os JPG oficiais originais NÃO são substituídos, e os recortes só removem margens brancas de apresentação.
+
+INSTRUÇÕES GITHUB
+1. Faça cópia/backup antes de substituir.
+2. Extraia o arquivo VotoEsporte_V10_SOMENTE_ARQUIVOS_ALTERADOS.zip.
+3. Na raiz do repositório Github, copie os itens extraídos respeitando os caminhos.
+4. Faça commit das alterações (ou use GitHub Desktop: Commit > Push origin).
+5. Aguarde o GitHub Pages e atualize com Ctrl+F5, sem limpar banco de dados.
+6. Confira login, tema claro/escuro, frequências, ocorrências e painel.
+
+FIREBASE / CONFIG / RULES
+NÃO é necessário mudar firebase-config.js nem publicar rules novas para aplicar apenas esta nova identidade, porque o JS de operação e as regras foram preservados byte a byte.
+Se o login de professor por e-mail e senha ainda NÃO foi habilitado no Firebase, habilite Authentication > Sign-in method > Email/Password e confirme Google como provedor do administrador. Isso é uma pendência de configuração funcional da V9, não uma alteração exigida pela V10.
+O administrador deve ser autorizado por UID na coleção adminUsers. Permissão de professor exige regras corretas no Firebase (não apenas no GitHub).
+
+LIMITAÇÃO
+Testes locais realizados em modo demonstração, sem Firebase real. O sistema V9 continua uma versão piloto e requer homologação de autenticação, regras e dados territoriais antes de uso institucional com cadastros reais.
