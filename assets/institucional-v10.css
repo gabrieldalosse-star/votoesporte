@@ -1,0 +1,297 @@
+/* VotoEsporte 10.0 — identidade institucional. Nenhuma regra operacional alterada. */
+:root {
+  --ink: #102543;
+  --ink-soft: #5A6C83;
+  --forest: #1051B5;
+  --forest-dark: #083777;
+  --mint: #EAF1FD;
+  --mint-strong: #6D9BF0;
+  --sun: #E8AD3B;
+  --cream: #F3F6FB;
+  --paper: #FFFFFF;
+  --line: #DFE6F1;
+  --navy: #0A254F;
+  --navy-2: #15448D;
+  --shadow-sm: 0 2px 4px rgba(18, 41, 81, .035), 0 12px 30px rgba(18, 41, 81, .06);
+  --shadow-lg: 0 12px 30px rgba(11, 32, 72, .10), 0 38px 90px rgba(11, 32, 72, .11);
+  --radius: 18px;
+  --radius-sm: 11px;
+  --font: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+}
+*, *::before,*::after { box-sizing: border-box; }
+html { background: var(--cream); scroll-behavior: smooth; }
+body { color: var(--ink); background: var(--cream); }
+body,button,input,select,textarea { font-family: var(--font); }
+button, input, select,textarea { font-size: inherit; }
+button:focus-visible,a:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-visible { outline: 3px solid #85B4FF; outline-offset: 3px; }
+button:not(:disabled),a, input,select { -webkit-tap-highlight-color: transparent; }
+button { touch-action: manipulation; }
+.icon-sprite { position: absolute; height:0; width:0; overflow:hidden; }
+.nav-symbol { display:block; width:19px; height:19px; flex:0 0 19px; fill:none; stroke:currentColor; stroke-width:1.85; stroke-linecap:round; stroke-linejoin:round; }
+
+/* SIGN IN — split hero / precise official logos / refined card */
+.auth-screen { min-height: 100svh; display:grid; grid-template-columns:minmax(0,1.08fr) minmax(480px,.92fr); background:#fff; }
+.auth-hero { isolation:isolate; display:flex; flex-direction:column; justify-content:space-between; position:relative; min-height:100svh; padding:clamp(32px,4vw,64px); overflow:hidden; background:#06224E; color:#fff; }
+.auth-hero::before { content:""; position:absolute; inset:0; z-index:-2; background:linear-gradient(180deg,rgba(4,21,53,.63) 0%,rgba(6,26,62,.18) 31%,rgba(5,21,51,.22) 51%,rgba(5,19,47,.91) 100%),url('comunidade-esportiva-v10.webp') center 52% / cover no-repeat; }
+.auth-hero::after { content:""; position:absolute; z-index:-1; width:min(74vw,720px); height:min(74vw,720px); left:-33%; bottom:-43%; border:1px solid rgba(255,255,255,.18); border-radius:50%; box-shadow:0 0 0 90px rgba(255,255,255,.025),0 0 0 210px rgba(235,179,68,.025); pointer-events:none; }
+.auth-hero-brand { display:flex; flex-direction:column; align-items:flex-start; gap:5px; width:fit-content; }
+.auth-hero-brand img { display:block; width:clamp(225px,20vw,310px); height:auto; max-height:60px; filter:drop-shadow(0 4px 12px rgba(0,0,0,.25)); }
+.hero-brand-line { font-size:11px; letter-spacing:.15em; text-transform:uppercase; font-weight:650; color:#CBDDF9; padding-left:5px; }
+.auth-hero .hero-copy { max-width:630px; margin-top:auto; padding:clamp(55px,13vh,140px) 0 30px; }
+.hero-kicker { display:inline-flex; align-items:center; gap:10px; margin-bottom:23px; font-size:11px; letter-spacing:.17em; font-weight:800; color:#FFE0A0; }
+.gold-dot { width:7px; height:7px; border-radius:50%; background:#F7C863; box-shadow:0 0 0 6px rgba(247,200,99,.14); }
+.auth-hero .hero-copy h1 { margin:0 0 18px; max-width:590px; color:#fff; font-size:clamp(43px,4.8vw,76px); font-weight:760; letter-spacing:-.062em; line-height:1.01; text-shadow:0 5px 32px rgba(0,19,51,.32); }
+.auth-hero .hero-copy h1 em { font-weight:760; font-style:normal; color:#FFD077; }
+.auth-hero .hero-copy p { max-width:490px; margin:0; color:#E2EEFF; font-size:clamp(14px,1.12vw,17px); line-height:1.7; text-shadow:0 2px 8px rgba(0,0,0,.25); }
+.hero-chips { display:flex; flex-wrap:wrap; gap:8px; margin-top:30px; }
+.hero-chips span { border:1px solid rgba(255,255,255,.29); background:rgba(8,27,67,.34); padding:8px 12px; border-radius:100px; font-size:11px; letter-spacing:.02em; font-weight:700; color:#EEF4FF; backdrop-filter:blur(10px); }
+.hero-footer { display:flex; align-items:center; gap:14px; margin-top:42px; color:#D7E4F8; font-size:11px; font-weight:600; }
+.hero-footer-rule { flex:0 0 42px; height:2px; background:#EAB649; }
+.auth-panel { display:flex; justify-content:center; align-items:center; position:relative; min-width:0; padding:clamp(22px,3.5vw,60px); background:linear-gradient(160deg,#FCFDFE,#F8FAFD 60%,#F0F4FA); color:#152D4D; }
+.auth-panel::before { display:none; }
+.login-wrap { display:flex; flex-direction:column; align-items:stretch; width:min(100%,460px); max-width:460px; margin:auto; }
+.login-official-logos { width:100%; display:grid; grid-template-columns: minmax(0,1fr) 1px minmax(0,1.32fr); align-items:center; column-gap:21px; padding:0 8px 24px; margin-bottom:25px; border-bottom:1px solid #E1E7F1; }
+.official-logo-frame { min-width:0; height:118px; display:flex; justify-content:center; align-items:center; }
+.official-logo-frame img { width:100%; height:100%; object-fit:contain; display:block; }
+.official-vertical-rule { width:1px; height:72px; background:#DFE6EF; }
+.logo-prefeitura img { max-width:127px; }
+.logo-secretaria img { max-width:211px; }
+.login-intro { padding:0 2px 18px; }
+.login-product-brand { display:block; width:min(100%,275px); height:auto; max-height:73px; margin-bottom:10px; }
+.login-intro h2 { color:#102C52; font-size:clamp(23px,2vw,29px); font-weight:760; letter-spacing:-.04em; line-height:1.1; margin:0 0 6px; }
+.login-intro p { color:#5E7089; font-size:13px; margin:0; line-height:1.55; }
+.login-wrap .email-auth-form { display:grid; gap:15px; width:100%; }
+.login-wrap .email-auth-form label { display:grid; gap:7px; color:#304665; font-size:12px; font-weight:760; letter-spacing:.01em; }
+.login-wrap .email-auth-form input { display:block; height:51px; padding:0 16px; border:1px solid #D2DDEB; border-radius:12px; background:#fff; color:#162D4F; outline:none; font-size:14px; transition:border-color .18s, box-shadow .18s; box-shadow:0 1px 2px rgba(11,42,89,.025); }
+.login-wrap .email-auth-form input:focus { border-color:#2D71D2; box-shadow:0 0 0 3px rgba(26,102,210,.12); }
+.login-wrap .auth-form-actions { display:grid; gap:10px; margin-top:4px; }
+.login-wrap .button { width:100%; min-height:49px; border-radius:11px; justify-content:center; letter-spacing:-.012em; font-size:13px; font-weight:750; }
+.login-wrap .button-primary { background:linear-gradient(135deg,#104FA9,#0A357E); color:#fff; box-shadow:0 5px 14px rgba(11,59,139,.14); }
+.login-wrap .button-primary:hover:not(:disabled) { background:linear-gradient(135deg,#1D65CC,#0B448D); box-shadow:0 8px 18px rgba(11,59,139,.18); }
+.login-wrap .button-secondary { color:#204C85; background:#F0F5FC; border-color:#DCE7F5; }
+.login-wrap .button-google { color:#213955; background:#FFF; border-color:#D9E3F0; box-shadow:0 3px 12px rgba(12,37,75,.055); }
+.login-wrap .button-google:hover:not(:disabled) { background:#F8FAFD; border-color:#BBCFE7; }
+.login-wrap .button-google svg { width:20px; height:20px; }
+.login-wrap .auth-divider { width:100%; margin:15px 0; }
+.login-wrap .auth-divider span { background:#F9FBFD; color:#8492A6; }
+.login-wrap .form-message { margin:11px 0 0; }
+.login-footnote { padding-top:24px; text-align:center; font-size:11px; font-weight:600; color:#8592A7; }
+.login-wrap .setup-card { margin-bottom:16px; }
+
+/* Workspace: calm surfaces, aligned components, iconic navigation */
+.workspace { background:var(--cream); }
+.sidebar { width:265px; min-width:265px; padding:26px 14px 18px; background:linear-gradient(180deg,#102E61 0%,#081B3A 70%,#06152D 100%); color:#E6F0FF; overflow-y:auto; overflow-x:hidden; scrollbar-width:thin; scrollbar-color:rgba(169,194,233,.25) transparent; border-right:1px solid rgba(255,255,255,.07); }
+.sidebar-brand { display:flex; flex-direction:column; align-items:flex-start; gap:3px; min-height:98px; margin:0 4px 8px; padding:0 10px 18px; border-bottom:1px solid rgba(221,234,255,.14); }
+.sidebar-wordmark { display:block; width:203px; max-width:100%; height:52px; object-fit:contain; object-position:left center; filter:drop-shadow(0 2px 4px rgba(0,0,0,.07)); }
+.sidebar-brand-slogan { padding-left:3px; color:#A9C0E3; font-size:9px; font-weight:750; letter-spacing:.19em; }
+.main-nav { display:grid; gap:4px; }
+.nav-group-title { display:block; margin:10px 12px 7px; color:#7795C1; font-weight:800; letter-spacing:.16em; font-size:9px; }
+.nav-group-second { margin-top:19px; padding-top:17px; border-top:1px solid rgba(226,239,255,.10); }
+.nav-item { min-height:45px; display:flex; align-items:center; gap:13px; width:100%; padding:10px 13px; border:1px solid transparent; border-radius:11px; color:#CEDCF3; font-size:12px; font-weight:650; white-space:normal; line-height:1.3; }
+.nav-item:hover { border-color:rgba(255,255,255,.09); background:rgba(255,255,255,.065); color:#FFF; }
+.nav-item.active { color:#FFF; background:linear-gradient(100deg,rgba(57,110,215,.85),rgba(33,83,174,.85)); box-shadow:inset 3px 0 0 #F0C065,0 5px 16px rgba(0,0,0,.09); border-color:rgba(152,185,250,.12); }
+.nav-item.active .nav-symbol { color:#FAD27C; }
+.sidebar-bottom { display:grid; gap:5px; margin-top:auto; padding-top:17px; }
+.sidebar-official { display:flex; gap:11px; align-items:center; padding:11px 13px 17px; margin-top:6px; margin-bottom:5px; border-bottom:1px solid rgba(255,255,255,.1); color:#D1DEF4; font-size:12px; font-weight:750; line-height:1.3; }
+.sidebar-official img { height:54px; width:54px; object-fit:cover; border-radius:8px; background:#FFF; }
+.sidebar-official small { font-size:10px; color:#A8BFDF; font-weight:450; }
+.topbar { min-height:81px; gap:14px; padding:14px clamp(19px,2.8vw,44px); background:rgba(255,255,255,.94); border-bottom:1px solid #E2E8F2; box-shadow:0 2px 14px rgba(13,37,80,.035); }
+.topbar-logo { display:grid; place-items:center; flex:0 0 41px; height:41px; padding:6px; border-radius:12px; background:#EFF5FF; box-shadow:inset 0 0 0 1px rgba(34,79,146,.08); }
+.topbar-logo img { width:100%; height:100%; display:block; }
+.topbar-context { flex:1; min-width:0; }
+.topbar-context .eyebrow { color:#7085A3; margin-bottom:2px; font-size:9px; }
+.topbar-context h1 { color:#1B3559; font-size:15px; font-weight:760; }
+.topbar-actions { flex-shrink:0; }
+.profile-chip { border:1px solid #DFE6F2; box-shadow:0 3px 9px rgba(12,46,90,.045); }
+.profile-chip .avatar,.avatar { background:linear-gradient(135deg,#0E4BA4,#3A7DD1); }
+.main-content { width:min(100%,1570px); padding:clamp(23px,3vw,39px) clamp(22px,3vw,46px) 70px; }
+.page-intro { align-items:center; gap:20px; margin-bottom:23px; }
+.page-intro h2 { color:var(--ink); font-size:clamp(24px,2.25vw,34px); font-weight:770; line-height:1.18; letter-spacing:-.052em; }
+.page-intro p:not(.eyebrow) { font-size:13px; line-height:1.65; }
+.page-intro .kicker, .eyebrow { letter-spacing:.13em; font-weight:760; }
+.page-intro .kicker { color:var(--forest); }
+.panel { border:1px solid var(--line); background:var(--paper); border-radius:16px; box-shadow:var(--shadow-sm); }
+.button { border-radius:10px; letter-spacing:-.008em; font-weight:720; }
+.button-primary { background:#1053B6; box-shadow:0 5px 15px rgba(18,83,182,.12); }
+.button-primary:hover:not(:disabled) { background:#0A428F; box-shadow:0 8px 19px rgba(18,83,182,.16); }
+.button-secondary { color:#154789; background:var(--paper); border-color:#D4E0EE; }
+.button-secondary:hover:not(:disabled) { background:#F2F7FD; border-color:#B5C9E4; }
+input, select, textarea { accent-color:#1352AB; }
+.panel-heading h3 { font-size:16px; font-weight:750; }
+.panel-heading .eyebrow { font-size:10px; }
+
+/* Dashboard: editorial hero and original civic logos, considerably larger */
+#view-dashboard .dashboard-intro { position:relative; isolation:isolate; display:flex; min-height:236px; padding:36px clamp(26px,4vw,48px); border-radius:19px; color:#FFF; background:#081C3B; align-items:center; overflow:hidden; box-shadow:0 20px 44px rgba(14,44,101,.13); }
+#view-dashboard .dashboard-intro::before { content:""; position:absolute; z-index:-1; inset:0; background:linear-gradient(93deg,rgba(7,30,67,.98) 0%,rgba(9,37,78,.95) 39%,rgba(12,54,115,.64) 69%,rgba(11,40,81,.18) 100%); }
+.dashboard-art { position:absolute; z-index:-2; inset:0; background:url('comunidade-esportiva-v10.webp') 72% 45%/cover no-repeat; }
+#view-dashboard .dashboard-intro > div:not(.dashboard-art) { position:relative; z-index:2; }
+#view-dashboard .dashboard-intro > div:first-of-type { max-width:650px; }
+#view-dashboard .dashboard-intro h2 { color:#FFF; max-width:540px; font-size:clamp(29px,2.6vw,39px); line-height:1.13; }
+#view-dashboard .dashboard-intro p:not(.eyebrow) { color:#DAE8FC; max-width:570px; }
+#view-dashboard .dashboard-intro .kicker { color:#F8CE78; }
+#view-dashboard .dashboard-intro .dashboard-buttons { display:flex; align-items:center; gap:9px; flex-wrap:wrap; margin-left:auto; }
+#view-dashboard .dashboard-intro .button { min-height:41px; white-space:nowrap; }
+#view-dashboard .dashboard-intro .button-primary { background:#F0BE5D; color:#12355E; box-shadow:none; }
+#view-dashboard .dashboard-intro .button-secondary { color:#FFF; background:rgba(255,255,255,.13); border-color:rgba(255,255,255,.25); }
+#view-dashboard .dashboard-intro .button:hover:not(:disabled) { filter:brightness(1.08); }
+.official-brand-row { display:flex; justify-content:center; align-items:center; gap:29px; min-height:135px; padding:12px 24px; margin:0 0 20px; background:#FFF; border:1px solid #E2E9F2; border-radius:17px; box-shadow:0 2px 9px rgba(13,44,92,.036); }
+.official-brand-unit { display:flex; justify-content:center; align-items:center; height:110px; min-width:0; }
+.official-brand-unit img { display:block; height:100%; max-width:100%; width:auto; object-fit:contain; }
+.prefeitura-unit img { height:108px; }
+.secretaria-unit img { height:102px; }
+.official-brand-separator { flex:0 0 1px; width:1px; height:76px; background:#DCE4F1; }
+.stats-grid { grid-template-columns: repeat(auto-fit,minmax(195px,1fr)); gap:13px; }
+.stat-card { position:relative; min-height:138px; padding:21px; border-radius:15px; overflow:hidden; }
+.stat-card::before { position:absolute; content:""; left:20px; right:20px; top:0; height:3px; border-radius:99px; background:#185BBC; opacity:.65; }
+.stat-card:nth-child(4n + 2)::before { background:#E5B44F; }
+.stat-card:nth-child(4n + 3)::before { background:#53A5C2; }
+.stat-card:nth-child(4n + 4)::before { background:#7D9EC8; }
+.stat-card .stat-label { margin-bottom:20px; align-items:flex-start; font-size:11px; line-height:1.4; }
+.stat-card .stat-label span { max-width:82%; }
+.stat-icon { flex-shrink:0; width:29px; height:29px; border-radius:9px; background:#EDF4FF; color:#1253AD; font-weight:800; }
+.stat-card strong { font-size:30px; font-weight:750; color:var(--ink); font-variant-numeric:tabular-nums; }
+.stat-card small { font-size:11px; line-height:1.5; }
+.censo-chart-grid { gap:15px; }
+.censo-chart-card { border-radius:16px; }
+.censo-chart-card h4 { color:var(--ink); font-weight:720; }
+.censo-bar-track span { background:linear-gradient(90deg,#164B9D,#3485DA); }
+.censo-filter-summary { background:#EEF4FC; border-color:#DDE8F5; color:#2A4973; }
+.today-item { background:#F4F7FC; border:1px solid #EAF0F7; }
+.today-item:hover { background:#EAF2FB; }
+.progress-track { background:#ECF1F8; }
+.progress-track i { background:linear-gradient(90deg,#0B4FA7,#418DDE); }
+.class-card { background:var(--paper); border-radius:15px; }
+.class-card:hover { border-color:#A9C5E7; }
+.class-card.selected { border-color:#6195D7; box-shadow:0 0 0 3px rgba(37,104,202,.08),var(--shadow-sm); }
+.pill { color:#265789; background:#E9F2FD; }
+.pill.inactive { color:#886423; background:#FAF0D9; }
+.territory-map { min-height:610px; }
+.official-territory-map { min-height:560px; }
+.territory-map-panel { min-width:0; }
+.territory-zone-row { background:var(--paper); }
+.territory-zone-row:hover,.territory-zone-row.selected { background:#EFF6FF; }
+.occurrence-card { background:var(--paper); }
+.theme-options { gap:10px; }
+.theme-option.active { background:#114CA2; box-shadow:0 6px 18px rgba(15,71,151,.14); }
+.settings-grid { grid-template-columns:minmax(280px,650px); }
+.settings-card { padding:25px; }
+
+/* Theming: consistent surfaces instead of mismatched pure-white islands */
+body[data-theme='dark'] { --ink:#ECF2FF; --ink-soft:#AABBD7; --forest:#79AFFF; --forest-dark:#071D42; --mint:#1E3455; --cream:#0D1423; --paper:#151F33; --line:#293B55; --shadow-sm:0 2px 4px rgba(0,0,0,.08),0 12px 30px rgba(0,0,0,.19); --shadow-lg:0 12px 30px rgba(0,0,0,.25),0 30px 65px rgba(0,0,0,.32); }
+body[data-theme='dark'] .topbar { background:#111C2F; border-color:#283B58; }
+body[data-theme='dark'] .topbar-context h1 { color:#EFF5FF; }
+body[data-theme='dark'] .topbar-logo { background:#1D3555; }
+body[data-theme='dark'] .official-brand-row { background:#FFF; }
+body[data-theme='dark'] .panel,body[data-theme='dark'] .profile-chip,body[data-theme='dark'] dialog,body[data-theme='dark'] .class-card,body[data-theme='dark'] .occurrence-card { color:var(--ink); background:var(--paper); border-color:var(--line); }
+body[data-theme='dark'] .stat-card strong,body[data-theme='dark'] .censo-chart-card h4,body[data-theme='dark'] .page-intro h2 { color:var(--ink); }
+body[data-theme='dark'] #view-dashboard .dashboard-intro h2 { color:#FFF; }
+body[data-theme='dark'] .today-item,body[data-theme='dark'] .censo-filter-summary { background:#1B2A43; color:#D3E4FC; border-color:#293D5A; }
+body[data-theme='dark'] .censo-analytics-head p,body[data-theme='dark'] .censo-count-note,body[data-theme='dark'] .censo-filter-label,body[data-theme='dark'] .censo-bar-label { color:#BDCCE2; }
+body[data-theme='dark'] .censo-chart-card h4 { color:#F0F5FF; }
+body[data-theme='dark'] .button-secondary { color:#D2E6FF; border-color:#344965; background:#192C45; }
+body[data-theme='dark'] .button-secondary:hover { background:#243955; }
+body[data-theme='dark'] input,body[data-theme='dark'] select,body[data-theme='dark'] textarea { color:#EEF4FF; border-color:#354A69; background:#172640; }
+body[data-theme='dark'] .auth-panel { background:#F8FAFD; color:#172E52; }
+body[data-theme='dark'] .login-wrap input { background:#FFF; color:#142A4A; border-color:#D2DDEB; }
+body[data-theme='dark'] .login-wrap .button-google { background:#FFF; color:#243C5E; }
+body[data-theme='dark'] .login-wrap .button-secondary { background:#EEF4FC; color:#1F4C88; }
+body[data-theme='dark'] .pill { background:#1E3550; color:#B4D8FF; }
+body[data-theme='dark'] .sidebar { color:#D5E5FC; }
+body[data-theme='dark'] .auth-divider span { background:#F8FAFD; }
+
+@media(max-width:1280px) {
+ .auth-screen { grid-template-columns:minmax(0,1fr) minmax(440px,.95fr); }
+ .auth-hero { padding:36px; }
+ .auth-hero .hero-copy h1 { font-size:clamp(41px,4.9vw,62px); }
+ .sidebar { width:246px; min-width:246px; }
+ .main-content { padding-left:28px; padding-right:28px; }
+ .login-official-logos { gap:12px; }
+ #view-dashboard .dashboard-intro { flex-wrap:wrap; }
+ #view-dashboard .dashboard-intro .dashboard-buttons { margin-left:0; }
+}
+@media(max-width:980px) {
+ .auth-screen { display:grid; grid-template-columns:1fr; }
+ .auth-hero { min-height:355px; padding:32px clamp(20px,5vw,50px); }
+ .auth-hero::before { background-image:linear-gradient(90deg,rgba(3,18,46,.89),rgba(3,18,46,.26)),url('comunidade-esportiva-v10.webp'); background-position:center 40%; }
+ .auth-hero-brand img { width:225px; }
+ .auth-hero .hero-copy { padding:40px 0 0; }
+ .auth-hero .hero-copy h1 { font-size:clamp(34px,5vw,54px); }
+ .auth-hero .hero-copy p { max-width:440px; }
+ .hero-footer { display:none; }
+ .hero-chips { margin-top:17px; }
+ .auth-panel { padding:34px 24px 42px; }
+ .login-wrap { max-width:590px; }
+ .login-official-logos { grid-template-columns:minmax(0,1fr) 1px minmax(0,1fr); }
+ .official-logo-frame { height:110px; }
+ .sidebar { width:254px; min-width:254px; }
+ .topbar-logo { display:none; }
+ .stats-grid { grid-template-columns:repeat(auto-fit,minmax(190px,1fr)); }
+}
+@media(max-width:700px) {
+ .auth-hero { min-height:316px; padding:25px 22px; }
+ .auth-hero::before { background-position:55% 46%; background-size:cover; }
+ .auth-hero-brand img { width:186px; height:39px; }
+ .hero-brand-line { font-size:9px; }
+ .auth-hero .hero-copy { padding:26px 0 0; }
+ .auth-hero .hero-copy h1 { font-size:clamp(32px,8vw,47px); margin-bottom:9px; }
+ .auth-hero .hero-copy p { font-size:12px; line-height:1.5; max-width:340px; }
+ .hero-kicker { font-size:9px; margin-bottom:13px; }
+ .hero-chips { display:none; }
+ .auth-panel { padding:22px 20px 38px; }
+ .login-official-logos { height:105px; padding:0 0 12px; margin-bottom:18px; }
+ .official-logo-frame { height:88px; }
+ .logo-prefeitura img { max-width:99px; }
+ .logo-secretaria img { max-width:184px; }
+ .official-vertical-rule { height:60px; }
+ .login-product-brand { width:242px; margin-bottom:5px; }
+ .login-intro { padding-bottom:15px; }
+ .login-intro h2 { font-size:24px; }
+ .login-wrap .email-auth-form { gap:11px; }
+ .login-wrap .email-auth-form input { height:49px; }
+ .login-wrap .button { min-height:47px; }
+ .topbar { min-height:70px; padding:12px 16px; }
+ .topbar-context h1 { font-size:13px; }
+ .main-content { padding:18px 15px 46px; }
+ #view-dashboard .dashboard-intro { min-height:280px; padding:25px; align-items:flex-end; }
+ #view-dashboard .dashboard-intro::before { background:linear-gradient(90deg,rgba(7,27,64,.97),rgba(9,41,87,.75)); }
+ #view-dashboard .dashboard-intro h2 { font-size:28px; }
+ .dashboard-art { background-position:64% center; }
+ #view-dashboard .dashboard-intro .dashboard-buttons { display:grid; grid-template-columns:1fr; width:100%; }
+ .official-brand-row { gap:12px; padding:10px; min-height:100px; }
+ .official-brand-unit { height:77px; }
+ .prefeitura-unit img { height:75px; }
+ .secretaria-unit img { height:68px; }
+ .official-brand-separator { height:48px; }
+ .stats-grid { grid-template-columns:repeat(2,minmax(0,1fr)); gap:10px; }
+ .stat-card { min-height:126px; padding:15px; }
+ .stat-card strong { font-size:24px; }
+ .stat-card .stat-label { margin-bottom:15px; font-size:10px; }
+ .nav-item { font-size:13px; }
+ .territory-map, .official-territory-map { min-height:370px; }
+}
+@media(max-width:390px) {
+ .login-official-logos { column-gap:9px; }
+ .hero-kicker { letter-spacing:.095em; }
+ .auth-hero .hero-copy h1 { font-size:33px; }
+ .stats-grid { grid-template-columns:1fr 1fr; }
+ .stat-card { padding:12px; }
+ .stat-card strong { font-size:22px; }
+ .official-brand-row { gap:7px; }
+}
+@media(prefers-reduced-motion:reduce) {*,*::before,*::after { scroll-behavior:auto!important; animation:none!important; transition:none!important; }}
+@media print { .official-brand-row { display:none!important; } }
+
+/* Precise asset bounds: crops remove white margins only; original JPGs remain untouched. */
+.logo-prefeitura img { max-width:160px; }
+.logo-secretaria img { max-width:240px; }
+.login-official-logos .official-logo-frame { height:120px; }
+.official-brand-row .prefeitura-unit img { height:110px; }
+.official-brand-row .secretaria-unit img { height:105px; }
+.sidebar-official img { object-fit:contain; padding:4px; }
+/* Extend dashboard art across full hero — no accidental 650px clipping. */
+#view-dashboard .dashboard-intro > .dashboard-art { position:absolute; inset:0; max-width:none !important; width:100%; height:100%; }
+@media(max-width:700px){ .login-official-logos .official-logo-frame { height:88px; } .logo-prefeitura img { max-width:122px; } .logo-secretaria img { max-width:225px; } }
+@media(max-width:700px) {
+  .auth-hero::before { background-image:linear-gradient(90deg,rgba(3,18,46,.89),rgba(3,18,46,.26)),url('comunidade-esportiva-mobile.webp'); }
+  .dashboard-art { background-image:url('comunidade-esportiva-mobile.webp'); }
+}
