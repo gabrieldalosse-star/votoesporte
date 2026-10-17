@@ -1,0 +1,81 @@
+{
+  "type": "FeatureCollection",
+  "name": "Contorno ilustrativo municipal de Votorantim — origem não verificada",
+  "metadata": {
+    "source": "Polígono esquemático recebido no pacote inicial; precisão geográfica não verificada",
+    "accuracy": "Apenas visualização preliminar. NÃO usar como limite municipal oficial."
+  },
+  "features": [
+    {
+      "type": "Feature",
+      "properties": {
+        "codarea": "3557006",
+        "name": "Votorantim",
+        "source": "Representação esquemática, não oficial"
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [
+              -47.3075,
+              -23.561
+            ],
+            [
+              -47.3543,
+              -23.5609
+            ],
+            [
+              -47.3647,
+              -23.524
+            ],
+            [
+              -47.4286,
+              -23.5223
+            ],
+            [
+              -47.5028,
+              -23.5358
+            ],
+            [
+              -47.4925,
+              -23.5842
+            ],
+            [
+              -47.4669,
+              -23.6245
+            ],
+            [
+              -47.4942,
+              -23.65
+            ],
+            [
+              -47.4542,
+              -23.6255
+            ],
+            [
+              -47.4045,
+              -23.6212
+            ],
+            [
+              -47.3684,
+              -23.6338
+            ],
+            [
+              -47.3371,
+              -23.6116
+            ],
+            [
+              -47.2968,
+              -23.6037
+            ],
+            [
+              -47.3075,
+              -23.561
+            ]
+          ]
+        ]
+      }
+    }
+  ]
+}
