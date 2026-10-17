@@ -1,9 +1,12 @@
 import { initializeApp } from "https://www.gstatic.com/firebasejs/11.0.2/firebase-app.js";
 import {
   GoogleAuthProvider,
+  getIdTokenResult,
+  createUserWithEmailAndPassword,
   getAuth,
   getRedirectResult,
   onAuthStateChanged,
+  signInWithEmailAndPassword,
   signInWithPopup,
   signInWithRedirect,
   signOut
@@ -26,9 +29,15 @@ import {
   where
 } from "https://www.gstatic.com/firebasejs/11.0.2/firebase-firestore.js";
 
+function safeStorageGet(key) {
+  try { return window.localStorage.getItem(key); } catch { return null; }
+}
+function safeStorageSet(key, value) {
+  try { window.localStorage.setItem(key, value); } catch { /* preferência temporária */ }
+}
+
 const DEMO_STORE_KEY = "votorantim-esporte-chamada-demo-v1";
-const APP_VERSION = "7.1.0";
-const BUNDLED_TERRITORY_GEOJSON_URL = "data/setores_votorantim_4_setores_PRELIMINAR.geojson";
+const APP_VERSION = "9.0.0-rc1";
 const FIREBASE_REQUIRED_KEYS = ["apiKey", "authDomain", "projectId", "appId"];
 const PAGE_TITLES = {
   dashboard: ["VISÃO GERAL", "Bom trabalho!"],
@@ -97,6 +106,8 @@ const state = {
   classDetailTab: "students",
   studentsByClass: {},
   histories: {},
+  monthlyHistories: {},
+  monthWatchers: new Map(),
   attendance: { classId: "", date: localDate(), sessionTime: localTime(), records: {}, dirty: false },
   report: null,
   importRows: [],
@@ -122,63 +133,10 @@ bootstrap().catch((error) => {
   }
 });
 
-async function bootstrap() {
-  wireStaticEvents();
-  ui["attendance-date"].value = state.attendance.date;
-  ui["report-month"].value = localMonth();
-  renderHelp();
-  await loadBundledTerritoryZones();
-
-  const configured = isFirebaseConfigured(window.FIREBASE_CONFIG);
-  if (!configured) {
-    ui["firebase-setup-card"].classList.remove("hidden");
-    ui["google-sign-in"].disabled = true;
-    ui["demo-sign-in"].classList.remove("hidden");
-    finishLoading();
-    showAuthScreen();
-    return;
-  }
-
-  try {
-    firebase = createFirebase(window.FIREBASE_CONFIG);
-    state.firebaseEnabled = true;
-    onAuthStateChanged(firebase.auth, handleFirebaseUser, (error) => {
-      console.error("Firebase auth listener error:", error);
-      finishLoading();
-      showAuthScreen();
-      showAuthMessage("Falha ao conectar com a autenticação: " + friendlyFirebaseError(error));
-    });
-    getRedirectResult(firebase.auth).catch((error) => {
-      console.error("Firebase redirect error:", error);
-      showAuthMessage(friendlyFirebaseError(error));
-    });
-  } catch (error) {
-    console.error("Firebase initialization failed", error);
-    ui["firebase-setup-card"].classList.remove("hidden");
-    ui["demo-sign-in"].classList.remove("hidden");
-    showAuthMessage("Não foi possível iniciar o Firebase. Revise firebase-config.js.");
-    finishLoading();
-  }
-}
-
 async function loadBundledTerritoryZones() {
-  try {
-    const response = await fetch(BUNDLED_TERRITORY_GEOJSON_URL, { cache: "force-cache" });
-    if (!response.ok) throw new Error("Arquivo territorial não encontrado");
-    const source = await response.json();
-    const sourceVersion = String(source?.metadata?.sourceVersion || "Censo Esportivo de Votorantim · setores preliminares aproximados · 2026");
-    state.bundledTerritoryZones = normalizeTerritoryFeatures(source, {
-      zoneNameProperty: "name",
-      sectorProperty: "sector",
-      sourceVersion,
-      importedFrom: "bundled-preliminary"
-    });
-  } catch (error) {
-    // The application remains usable when a static host is misconfigured. The
-    // map shows the municipal boundary and explains that the local layer failed.
-    console.warn("Não foi possível carregar os setores locais", error);
-    state.bundledTerritoryZones = [];
-  }
+  // Nenhuma delimitação oficial de setores foi comprovada no pacote recebido.
+  // Não produzir polígonos sintéticos: administradores podem importar zonas validadas.
+  state.bundledTerritoryZones = [];
 }
 
 function createFirebase(config) {
@@ -198,13 +156,31 @@ async function handleFirebaseUser(firebaseUser) {
   }
 
   state.isDemo = false;
-  state.user = {
-    uid: firebaseUser.uid,
-    email: firebaseUser.email || "",
-    displayName: firebaseUser.displayName || "",
-    photoURL: firebaseUser.photoURL || ""
-  };
-  await prepareWorkspace();
+  try {
+    const token = await getIdTokenResult(firebaseUser);
+    const provider = token?.signInProvider || "";
+    // A autorização real também é aplicada nas regras do Firestore.
+    if (provider === "google.com") {
+      const adminDoc = await getDoc(doc(firebase.db, "adminUsers", firebaseUser.uid));
+      if (!adminDoc.exists()) {
+        await signOut(firebase.auth);
+        showAuthMessage("O login Google é reservado ao administrador autorizado. Professores devem entrar com e-mail e senha.");
+        return;
+      }
+    }
+    state.user = {
+      uid: firebaseUser.uid,
+      email: firebaseUser.email || "",
+      displayName: firebaseUser.displayName || "",
+      photoURL: firebaseUser.photoURL || ""
+    };
+    await prepareWorkspace();
+  } catch (error) {
+    console.error("Falha ao validar o acesso", error);
+    showAuthMessage("Não foi possível validar suas permissões. " + friendlyFirebaseError(error));
+    finishLoading();
+    showAuthScreen();
+  }
 }
 
 async function startDemo() {
@@ -219,34 +195,6 @@ async function startDemo() {
   await prepareWorkspace();
 }
 
-async function prepareWorkspace() {
-  try {
-    finishLoading();
-    state.profile = await repository.getProfile();
-    state.isAdmin = state.isDemo || (!state.isDemo && (await repository.isAdmin()));
-    state.profile ||= null;
-
-    ui["auth-screen"].classList.add("hidden");
-    ui.workspace.classList.remove("hidden");
-    ui["mode-badge"].classList.toggle("hidden", !state.isDemo);
-    ui["admin-nav"].classList.toggle("hidden", !state.isAdmin);
-    ui["open-territory-import"].classList.toggle("hidden", !state.isAdmin);
-    updateProfileUi();
-    setActiveView("dashboard", { preserveScroll: true });
-    subscribeClasses();
-    subscribeTerritoryZones();
-
-    if (!state.profile) {
-      openProfileDialog();
-      toast("Confirme seu perfil antes de cadastrar turmas.");
-    }
-  } catch (error) {
-    console.error(error);
-    showAuthMessage(friendlyFirebaseError(error));
-    showAuthScreen();
-  }
-}
-
 function finishLoading() {
   ui["loading-screen"].classList.add("hidden");
 }
@@ -254,95 +202,6 @@ function finishLoading() {
 function showAuthScreen() {
   ui.workspace.classList.add("hidden");
   ui["auth-screen"].classList.remove("hidden");
-}
-
-function clearWorkspaceState() {
-  stopSubscriptions();
-  state.profile = null;
-  state.user = null;
-  state.classes = [];
-  state.territoryZones = [];
-  state.studentsByClass = {};
-  state.histories = {};
-  state.selectedClassId = null;
-  state.report = null;
-}
-
-function wireStaticEvents() {
-  ui["google-sign-in"].addEventListener("click", signInWithGoogle);
-  ui["demo-sign-in"].addEventListener("click", startDemo);
-  ui["mobile-menu"].addEventListener("click", () => ui.sidebar.classList.toggle("open"));
-  ui["profile-menu"].addEventListener("click", () => {
-    const open = ui["profile-popover"].classList.toggle("hidden");
-    ui["profile-menu"].setAttribute("aria-expanded", String(!open));
-  });
-  ui["edit-profile"].addEventListener("click", () => {
-    ui["profile-popover"].classList.add("hidden");
-    openProfileDialog();
-  });
-  ui["sign-out"].addEventListener("click", signOutUser);
-  ui["quick-attendance"].addEventListener("click", () => openAttendanceFor(state.selectedClassId || state.classes[0]?.id));
-  ui["dashboard-add-class"].addEventListener("click", () => openClassDialog());
-  ui["add-class"].addEventListener("click", () => openClassDialog());
-  ui["save-attendance"].addEventListener("click", saveAttendance);
-  ui["mark-all-present"].addEventListener("click", markAllPresent);
-  ui["clear-attendance"].addEventListener("click", clearAttendance);
-  ui["attendance-class"].addEventListener("change", onAttendanceFilterChange);
-  ui["attendance-date"].addEventListener("change", onAttendanceFilterChange);
-  ui["attendance-time"].addEventListener("change", () => {
-    state.attendance.sessionTime = ui["attendance-time"].value || localTime();
-    state.attendance.dirty = true;
-    renderAttendance();
-  });
-  ui["generate-report"].addEventListener("click", generateReport);
-  ui["export-csv"].addEventListener("click", exportReportCsv);
-  ui["print-report"].addEventListener("click", printReport);
-  ui["import-file"].addEventListener("change", handleCsvFile);
-  ui["import-class"].addEventListener("change", updateImportReadiness);
-  ui["import-reviewed"].addEventListener("change", updateImportReadiness);
-  ui["lookup-postal-code"].addEventListener("click", lookupPostalCode);
-  ui["confirm-import"].addEventListener("click", importStudents);
-  ui["open-territory-import"].addEventListener("click", openTerritoryImportDialog);
-  ui["territory-import-form"].addEventListener("submit", importTerritoryZones);
-  ui["territory-sector-filter"].addEventListener("change", () => {
-    state.territoryFilter = ui["territory-sector-filter"].value || "all";
-    state.selectedTerritoryZoneId = null;
-    renderTerritory();
-  });
-  ui["start-tour"].addEventListener("click", startTour);
-  ui["tour-back"].addEventListener("click", () => advanceTour(-1));
-  ui["tour-next"].addEventListener("click", () => advanceTour(1));
-
-  ui["profile-form"].addEventListener("submit", saveProfile);
-  ui["class-form"].addEventListener("submit", saveClass);
-  ui["student-form"].addEventListener("submit", saveStudent);
-
-  $$("[data-view]").forEach((button) => {
-    button.addEventListener("click", () => setActiveView(button.dataset.view));
-  });
-  $$('[data-close-dialog]').forEach((button) => {
-    button.addEventListener("click", () => closeDialog(button.dataset.closeDialog));
-  });
-
-  document.addEventListener("click", handleDynamicClick);
-  document.addEventListener("input", handleDynamicInput);
-  document.addEventListener("keydown", (event) => {
-    if (event.key === "Escape") {
-      ui.sidebar.classList.remove("open");
-      removeTourHighlight();
-    }
-    const mapAction = event.target.closest?.('[data-action="select-territory-zone"]');
-    if (mapAction && ["Enter", " "].includes(event.key)) {
-      event.preventDefault();
-      mapAction.dispatchEvent(new MouseEvent("click", { bubbles: true }));
-    }
-  });
-  window.addEventListener("storage", (event) => {
-    if (state.isDemo && event.key === DEMO_STORE_KEY) {
-      subscribeClasses();
-      subscribeTerritoryZones();
-    }
-  });
 }
 
 async function signInWithGoogle() {
@@ -370,30 +229,8 @@ async function signOutUser() {
   }
 }
 
-function setAuthBusy(busy) {
-  ui["google-sign-in"].disabled = busy;
-  ui["google-sign-in"].lastChild.textContent = busy ? "Abrindo acesso…" : "Continuar com Google";
-}
-
 function showAuthMessage(message) {
   ui["auth-message"].textContent = message || "";
-}
-
-function setActiveView(view, { preserveScroll = false } = {}) {
-  if (view === "admin" && !state.isAdmin) view = "dashboard";
-  state.activeView = view;
-  $$(".view").forEach((section) => section.classList.toggle("active", section.id === `view-${view}`));
-  $$(".nav-item[data-view]").forEach((button) => button.classList.toggle("active", button.dataset.view === view));
-  const [kicker, title] = PAGE_TITLES[view] || PAGE_TITLES.dashboard;
-  ui["context-kicker"].textContent = kicker;
-  ui["page-title"].textContent = title;
-  ui.sidebar.classList.remove("open");
-  if (!preserveScroll) window.scrollTo({ top: 0, behavior: "smooth" });
-
-  if (view === "classes") ensureClassSelection();
-  if (view === "attendance") ensureAttendanceReady();
-  if (view === "admin") renderAdmin();
-  if (view === "territory") renderTerritory();
 }
 
 function subscribeClasses() {
@@ -466,7 +303,10 @@ function mergeTerritoryZones(...collections) {
 function afterTerritoryZonesChanged() {
   populateTerritoryZoneOptions();
   populateClassTerritoryZoneOptions();
-  renderTerritory();
+  if (state.activeView === "territory") {
+    renderTerritory();
+    renderTerritoryLinks();
+  }
   renderClasses();
 }
 
@@ -588,7 +428,7 @@ function renderTerritory() {
 
 function renderTerritoryMap(zones, counts) {
   const usingGoogle = Boolean(window.GOOGLE_MAPS_CONFIG?.apiKey);
-  return `<div id="official-territory-map" class="official-territory-map" aria-label="Mapa de Votorantim com limite municipal oficial do IBGE"></div><p class="territory-map-credit">Limite municipal: IBGE, Malha Municipal 2024 · Base cartográfica: ${usingGoogle ? "Google Maps Platform" : "© OpenStreetMap contributors"} · Sem pinos ou endereços de participantes.</p>`;
+  return `<div id="official-territory-map" class="official-territory-map" aria-label="Mapa de Votorantim com contorno ilustrativo não oficial"></div><p class="territory-map-credit">Contorno territorial do pacote: ILUSTRATIVO, sem precisão ou origem oficial comprovada · Base: ${usingGoogle ? "Google Maps Platform" : "© OpenStreetMap contributors"}. Setores só aparecem após importação aprovada.</p>`;
 }
 
 async function mountOfficialTerritoryMap(zones, counts) {
@@ -599,7 +439,7 @@ async function mountOfficialTerritoryMap(zones, counts) {
   state.googleTerritoryMap = null;
   target.replaceChildren();
   try {
-    const response = await fetch("data/votorantim-limite-municipal-ibge-2024.geojson", { cache: "force-cache" });
+    const response = await fetch("data/votorantim-contorno-ilustrativo.geojson", { cache: "force-cache" });
     if (!response.ok) throw new Error("Limite municipal indisponível");
     const boundary = await response.json();
     if (window.GOOGLE_MAPS_CONFIG?.apiKey) {
@@ -617,7 +457,7 @@ async function mountOfficialTerritoryMap(zones, counts) {
     window.L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", { maxZoom: 19, attribution: "© OpenStreetMap contributors" }).addTo(map);
     const boundaryLayer = window.L.geoJSON(boundary, {
       style: { color: "#063b79", weight: 3, fillColor: "#2f94bf", fillOpacity: 0.07 },
-      onEachFeature: (_, layer) => layer.bindTooltip("Votorantim — limite municipal IBGE 2024", { sticky: true })
+      onEachFeature: (_, layer) => layer.bindTooltip("Contorno ilustrativo de Votorantim — não oficial", { sticky: true })
     }).addTo(map);
     map.fitBounds(boundaryLayer.getBounds(), { padding: [16, 16] });
     zones.filter((zone) => geometryPoints(zone.geometry).length).forEach((zone) => {
@@ -631,8 +471,8 @@ async function mountOfficialTerritoryMap(zones, counts) {
       layer.on("click", () => selectTerritoryZoneFromMap(zone.id));
     });
   } catch (error) {
-    console.error("Falha ao carregar a malha oficial", error);
-    target.innerHTML = `<div class="territory-map-empty"><span aria-hidden="true">!</span><h4>Mapa oficial indisponível</h4><p>Verifique a publicação do arquivo territorial e tente novamente.</p></div>`;
+    console.error("Falha ao carregar a geometria ilustrativa", error);
+    target.innerHTML = `<div class="territory-map-empty"><span aria-hidden="true">!</span><h4>Mapa não disponível</h4><p>Verifique os dados territoriais e a conexão com a base cartográfica.</p></div>`;
   }
 }
 
@@ -709,43 +549,48 @@ function geoPath(geometry, bounds) {
   }).join(" ") + " Z").join(" ");
 }
 
-function afterClassesChanged() {
-  if (state.selectedClassId && !state.classes.some((item) => item.id === state.selectedClassId)) {
-    state.selectedClassId = null;
-  }
-  if (state.classes.length && !state.selectedClassId) {
-    state.selectedClassId = state.classes[0].id;
-    observeSelectedStudents(state.selectedClassId);
-    loadHistory(state.selectedClassId);
-  }
-  if (!state.classes.length) state.selectedClassId = null;
-  refreshClassSelectors();
-  renderDashboard();
-  renderClasses();
-  renderAdmin();
-  renderTerritory();
-  if (state.attendance.classId) renderAttendance();
-  hydrateCensusStudents();
-}
-
 async function hydrateCensusStudents() {
   const requestId = ++state.censusHydrationId;
-  const classIds = new Set(state.classes.map((item) => item.id));
-  Object.keys(state.studentsByClass).forEach((id) => { if (!classIds.has(id)) delete state.studentsByClass[id]; });
-  try {
-    await Promise.all(state.classes.filter((item) => item.id !== state.selectedClassId).map((item) => loadStudents(item.id)));
-    if (requestId !== state.censusHydrationId) return;
-    renderDashboard();
-    renderTerritory();
-  } catch (error) {
-    console.error("Falha ao atualizar indicadores do censo", error);
-  }
+  const validIds = new Set(state.classes.map((item) => item.id));
+  Object.keys(state.studentsByClass).forEach((id) => {
+    if (!validIds.has(id)) delete state.studentsByClass[id];
+  });
+  // Loads only newly accessible classes; later edits to the selected class use
+  // the live listener. Admin may refresh all via the dashboard control.
+  const pending = state.classes.filter((item) => item.id !== state.selectedClassId && !(item.id in state.studentsByClass));
+  if (!pending.length) return;
+  let cursor = 0;
+  const worker = async () => {
+    while (cursor < pending.length) {
+      const item = pending[cursor++];
+      if (requestId !== state.censusHydrationId) return;
+      try { await loadStudents(item.id); }
+      catch (error) { console.warn("Falha ao carregar indicadores da turma", item.id, error); }
+    }
+  };
+  await Promise.all(Array.from({length: Math.min(6, pending.length)}, () => worker()));
+  if (requestId !== state.censusHydrationId) return;
+  renderDashboard();
+  if (state.activeView === "territory") { renderTerritory(); renderTerritoryLinks(); }
 }
 
-function stopSubscriptions() {
-  Object.values(state.unsubscribers).forEach((unsubscribe) => unsubscribe?.());
-  state.unsubscribers = { classes: null, selectedStudents: null, territoryZones: null };
-  state.selectedStudentsSubscriptionId = null;
+async function refreshIndicators() {
+  const button = ui["dashboard-refresh"];
+  if (button) { button.disabled = true; button.textContent = "Atualizando…"; }
+  try {
+    // Avoid uncontrolled burst of requests when many classes are accessible.
+    const items = [...state.classes];
+    let cursor = 0;
+    await Promise.all(Array.from({length: Math.min(6, items.length)}, async () => {
+      while (cursor < items.length) {
+        const item = items[cursor++];
+        await loadStudents(item.id);
+      }
+    }));
+    renderDashboard();
+    toast("Indicadores de alunos atualizados.");
+  } catch (error) { toast(friendlyFirebaseError(error), "error"); }
+  finally { if (button) { button.disabled = false; button.textContent = "Atualizar indicadores"; } }
 }
 
 function ensureClassSelection() {
@@ -779,7 +624,7 @@ function observeSelectedStudents(classId) {
       renderClasses();
       renderAttendance();
       renderDashboard();
-      renderTerritory();
+      if (state.activeView === "territory") { renderTerritory(); renderTerritoryLinks(); }
     },
     (error) => toast(friendlyFirebaseError(error), "error")
   );
@@ -816,38 +661,6 @@ async function loadHistory(classId) {
   } catch (error) {
     console.error(error);
   }
-}
-
-function refreshClassSelectors() {
-  const labels = state.classes.map((item) => `<option value="${escapeAttr(item.id)}">${escapeHtml(item.name || "Turma sem nome")}</option>`).join("");
-  const selects = [ui["attendance-class"], ui["import-class"]];
-  selects.forEach((select) => {
-    const prior = select.value;
-    select.innerHTML = state.classes.length ? `<option value="">Selecionar turma</option>${labels}` : `<option value="">Nenhuma turma cadastrada</option>`;
-    select.value = state.classes.some((item) => item.id === prior) ? prior : "";
-    select.disabled = !state.classes.length;
-  });
-
-  const reportPrior = ui["report-class"].value;
-  ui["report-class"].innerHTML = `<option value="all">${state.isAdmin ? "Todas as turmas acessíveis" : "Todas as minhas turmas"}</option>${labels}`;
-  ui["report-class"].value = state.classes.some((item) => item.id === reportPrior) || reportPrior === "all" ? reportPrior : "all";
-
-  if (!state.attendance.classId && state.classes.length) {
-    state.attendance.classId = state.selectedClassId || state.classes[0].id;
-  }
-  if (state.attendance.classId && state.classes.some((item) => item.id === state.attendance.classId)) {
-    ui["attendance-class"].value = state.attendance.classId;
-  }
-  updateImportReadiness();
-}
-
-function updateProfileUi() {
-  const displayName = state.profile?.displayName || state.user?.displayName || "Perfil";
-  ui["profile-name"].textContent = displayName;
-  ui["profile-avatar"].textContent = initials(displayName);
-  ui["dashboard-subtitle"].textContent = state.profile
-    ? `Olá, ${displayName.split(" ")[0] || displayName}. Veja suas turmas e a presença do período.`
-    : "Confirme seu perfil profissional para começar a organizar suas turmas.";
 }
 
 let censoDashboardBairro = "";
@@ -889,59 +702,6 @@ function renderCensoAnalytics() {
 }
 document.addEventListener("change",event=>{ if(event.target?.id==="censo-neighborhood-filter"){censoDashboardBairro=event.target.value;renderCensoAnalytics();} });
 
-function renderDashboard() {
-  renderCensoAnalytics();
-  const totalStudents = Object.values(state.studentsByClass).reduce((sum, list) => sum + list.length, 0);
-  const currentMonth = localMonth();
-  const histories = Object.values(state.histories).flat().filter((entry) => entry.date?.startsWith(currentMonth));
-  const marked = histories.reduce((sum, entry) => sum + Number(entry.markedCount || countMarked(entry.records)), 0);
-  const present = histories.reduce((sum, entry) => sum + Number(entry.presentCount || countPresent(entry.records)), 0);
-  const rate = marked ? Math.round((present / marked) * 100) : 0;
-  const latestAttendance = Object.values(state.histories).flat().sort((a, b) => `${b.date || ""}T${b.sessionTime || "00:00"}`.localeCompare(`${a.date || ""}T${a.sessionTime || "00:00"}`))[0];
-  const latestPresent = latestAttendance ? Number(latestAttendance.presentCount || countPresent(latestAttendance.records)) : 0;
-
-  const seen = new Set();
-  Object.values(state.studentsByClass).flat().forEach((student) => {
-    const key = [String(student.fullName || "").trim().toLocaleLowerCase("pt-BR"), student.birthDate || ""].join("|");
-    if (key !== "|") seen.add(key);
-  });
-  const uniqueParticipants = seen.size;
-  const activeClasses = state.classes.filter((item) => item.active !== false).length;
-  const sports = new Set(state.classes.map((item) => item.sport).filter(Boolean)).size;
-  const locations = new Set(state.classes.map((item) => item.location).filter(Boolean)).size;
-  ui["dashboard-stats"].innerHTML = [
-    ["Participantes identificados", uniqueParticipants || "—", "estimativa entre os cadastros carregados", "◉"],
-    ["Matrículas carregadas", totalStudents || "—", "vínculos nas turmas acessíveis", "◎"],
-    ["Turmas ativas", activeClasses, "turmas acessíveis", "◒"],
-    ["Atividades", sports, "modalidades das turmas", "◆"],
-    ["Locais", locations, "polos das turmas", "⌖"],
-    ["Chamadas no mês", histories.length, "registros já salvos", "✓"],
-    ["Presença no mês", marked ? `${rate}%` : "—", marked ? `${present} presença${present === 1 ? "" : "s"} marcada${present === 1 ? "" : "s"}` : "aguardando primeira chamada", "↗"],
-    ["Na última chamada", latestAttendance ? latestPresent : "—", latestAttendance ? `${formatDate(latestAttendance.date)}${latestAttendance.sessionTime ? ` às ${latestAttendance.sessionTime}` : ""}` : "aguardando primeira chamada", "◉"]
-  ].map(([label, value, note, icon]) => `<article class="panel stat-card"><div class="stat-label"><span>${label}</span><i class="stat-icon" aria-hidden="true">${icon}</i></div><strong>${value}</strong><small>${note}</small></article>`).join("");
-
-  if (!state.classes.length) {
-    ui["today-classes"].innerHTML = emptyInline("Nenhuma turma cadastrada", "Cadastre sua primeira turma para criar listas e chamadas.", "Cadastrar turma", "open-class-dialog");
-  } else {
-    ui["today-classes"].innerHTML = state.classes.slice(0, 4).map((item) => `
-      <div class="today-item">
-        <div><h4>${escapeHtml(item.name || "Turma sem nome")}</h4><p>${escapeHtml([item.sport, item.schedule].filter(Boolean).join(" · ") || "Sem horário informado")}</p></div>
-        <button class="button button-secondary" data-action="open-attendance" data-id="${escapeAttr(item.id)}" type="button">Chamar</button>
-      </div>`).join("");
-  }
-
-  const progressSource = state.classes.map((item) => {
-    const entries = (state.histories[item.id] || []).filter((entry) => entry.date?.startsWith(currentMonth));
-    const entryMarked = entries.reduce((sum, entry) => sum + Number(entry.markedCount || countMarked(entry.records)), 0);
-    const entryPresent = entries.reduce((sum, entry) => sum + Number(entry.presentCount || countPresent(entry.records)), 0);
-    return { item, rate: entryMarked ? Math.round((entryPresent / entryMarked) * 100) : null, entries: entries.length };
-  }).filter((row) => row.rate !== null);
-
-  ui["dashboard-progress"].innerHTML = progressSource.length
-    ? `<div class="progress-list">${progressSource.slice(0, 5).map((row) => `<div class="progress-item"><strong>${escapeHtml(row.item.name || "Turma")}</strong><span>${row.rate}%</span><div class="progress-track"><i style="width:${row.rate}%"></i></div></div>`).join("")}</div>`
-    : "Ainda não há chamadas concluídas neste período.";
-}
-
 function renderClasses() {
   if (!state.classes.length) {
     ui["classes-content"].innerHTML = `<div class="empty-state panel"><span aria-hidden="true">◒</span><h3>Sua primeira turma começa aqui</h3><p>Cadastre a turma antes de incluir alunos ou fazer a chamada. Nenhum nome é criado automaticamente.</p><button class="button button-primary" data-action="open-class-dialog" type="button">Cadastrar turma</button></div>`;
@@ -956,27 +716,9 @@ function renderClasses() {
   ui["classes-content"].innerHTML = `<div class="class-cards">${cards}</div>${renderClassDetail(selected)}`;
 }
 
-function getStudentContact(student) {
-  const target = student.contactTarget || student.contact?.target || "guardian";
-  const candidates = {
-    guardian: { phone: student.guardianPhone || student.contact?.guardianPhone || "", label: student.guardianName || "responsável" },
-    student: { phone: student.studentPhone || student.contact?.studentPhone || "", label: student.preferredName || student.fullName || "aluno" },
-    alternate: { phone: student.phone || student.contact?.alternatePhone || "", label: "contato alternativo" }
-  };
-  const selected = candidates[target] || candidates.guardian;
-  return { ...selected, target, permission: student.contactPermission || student.contact?.permission || "not_informed" };
-}
-
 function isContactAllowed(permission, channel) {
   if (channel === "whatsapp") return ["whatsapp", "both"].includes(permission);
   return ["call", "both"].includes(permission);
-}
-
-function renderContactActions(student, classId) {
-  const contact = getStudentContact(student);
-  const whatsAppDisabled = !contact.phone || !isContactAllowed(contact.permission, "whatsapp");
-  const callDisabled = !contact.phone || !isContactAllowed(contact.permission, "call");
-  return `<div class="contact-actions"><button class="contact-action whatsapp" data-action="contact-whatsapp" data-id="${escapeAttr(student.id)}" data-class-id="${escapeAttr(classId)}" type="button" ${whatsAppDisabled ? "disabled" : ""} aria-label="Abrir WhatsApp de ${escapeAttr(contact.label)}">WhatsApp</button><button class="contact-action call" data-action="contact-call" data-id="${escapeAttr(student.id)}" data-class-id="${escapeAttr(classId)}" type="button" ${callDisabled ? "disabled" : ""} aria-label="Ligar para ${escapeAttr(contact.label)}">Ligar</button></div>`;
 }
 
 function renderTerritoryPill(student) {
@@ -1045,110 +787,6 @@ async function loadAttendance() {
     renderAttendance();
   } catch (error) {
     toast(friendlyFirebaseError(error), "error");
-  }
-}
-
-function renderAttendance() {
-  const { classId, records } = state.attendance;
-  const students = state.studentsByClass[classId] || [];
-  ui["attendance-date"].value = state.attendance.date || localDate();
-  ui["attendance-time"].value = state.attendance.sessionTime || localTime();
-  if (classId) ui["attendance-class"].value = classId;
-  const marked = countMarked(records);
-  ui["attendance-marked"].textContent = `${marked} / ${students.length}`;
-  ui["attendance-progress"].style.width = students.length ? `${Math.round((marked / students.length) * 100)}%` : "0%";
-  ui["attendance-save-state"].textContent = state.attendance.dirty ? "Alterações não salvas" : "Sem alterações";
-  ui["attendance-save-state"].classList.toggle("changed", state.attendance.dirty);
-  ui["save-attendance"].disabled = !classId || !students.length;
-  ui["mark-all-present"].disabled = !students.length;
-  ui["clear-attendance"].disabled = !marked;
-
-  if (!state.classes.length) {
-    ui["attendance-helper"].textContent = "Cadastre uma turma antes de fazer a chamada.";
-    ui["attendance-list"].innerHTML = `<div class="empty-state"><span aria-hidden="true">◒</span><h3>Nenhuma turma disponível</h3><p>Crie uma turma e depois inclua os alunos para registrar presenças.</p><button class="button button-secondary" data-action="open-class-dialog" type="button">Cadastrar turma</button></div>`;
-    return;
-  }
-  if (!classId) {
-    ui["attendance-helper"].textContent = "Selecione uma turma para começar.";
-    ui["attendance-list"].innerHTML = `<div class="empty-state"><span aria-hidden="true">✓</span><h3>Escolha uma turma</h3><p>A lista de alunos será mostrada aqui.</p></div>`;
-    return;
-  }
-  const present = countPresent(records);
-  const moment = state.attendance.sessionTime || "horário não informado";
-  ui["attendance-helper"].textContent = students.length ? `Nesta chamada de ${formatDate(state.attendance.date)} às ${moment}, ${present} pessoa${present === 1 ? "" : "s"} ${present === 1 ? "está" : "estão"} presente${present === 1 ? "" : "s"}. Use P para presença e F para falta.` : "Esta turma ainda não tem alunos cadastrados.";
-  ui["attendance-list"].innerHTML = students.length ? students.map((student) => {
-    const record = records[student.id] || {};
-    const status = record.status || "";
-    const rowClass = status === "P" ? "has-present" : status === "F" ? "has-absent" : "";
-    const context = [student.enrollmentCode || "Sem código de matrícula", student.territoryZoneName || student.geo?.zoneLabel].filter(Boolean).join(" · ");
-    return `<div class="attendance-row ${rowClass}"><div class="attendance-person"><span class="student-initial">${initials(student.preferredName || student.fullName)}</span><div><strong>${escapeHtml(student.preferredName || student.fullName || "Sem nome")}</strong><small>${escapeHtml(context)}</small></div></div><div class="attendance-note"><input data-attendance-note="${escapeAttr(student.id)}" value="${escapeAttr(record.note || "")}" maxlength="160" placeholder="Nota opcional" aria-label="Nota para ${escapeAttr(student.preferredName || student.fullName || "aluno")}" /></div><div class="attendance-actions"><button class="attendance-status present ${status === "P" ? "active" : ""}" data-action="set-attendance" data-id="${escapeAttr(student.id)}" data-status="P" type="button" aria-pressed="${status === "P"}">P</button><button class="attendance-status absent ${status === "F" ? "active" : ""}" data-action="set-attendance" data-id="${escapeAttr(student.id)}" data-status="F" type="button" aria-pressed="${status === "F"}">F</button></div></div>`;
-  }).join("") : `<div class="empty-state"><span aria-hidden="true">+</span><h3>Inclua alunos nesta turma</h3><p>Sem alunos não é possível registrar uma chamada.</p><button class="button button-secondary" data-action="open-student-dialog" data-class-id="${escapeAttr(classId)}" type="button">Cadastrar aluno</button></div>`;
-}
-
-function updateAttendanceStatus(studentId, status) {
-  const existing = state.attendance.records[studentId] || {};
-  if (existing.status === status) {
-    delete state.attendance.records[studentId];
-  } else {
-    state.attendance.records[studentId] = { ...existing, status };
-  }
-  state.attendance.dirty = true;
-  renderAttendance();
-}
-
-function markAllPresent() {
-  const students = state.studentsByClass[state.attendance.classId] || [];
-  students.forEach((student) => {
-    state.attendance.records[student.id] = { ...(state.attendance.records[student.id] || {}), status: "P" };
-  });
-  state.attendance.dirty = true;
-  renderAttendance();
-}
-
-function clearAttendance() {
-  state.attendance.records = {};
-  state.attendance.dirty = true;
-  renderAttendance();
-}
-
-async function saveAttendance() {
-  const { classId, date, sessionTime } = state.attendance;
-  const classItem = state.classes.find((item) => item.id === classId);
-  const students = state.studentsByClass[classId] || [];
-  if (!classItem || !students.length) return;
-  const marked = countMarked(state.attendance.records);
-  if (!marked) {
-    toast("Marque ao menos uma presença ou falta antes de salvar.", "error");
-    return;
-  }
-  const records = cleanAttendanceRecords(state.attendance.records);
-  const entry = {
-    date,
-    sessionTime: sessionTime || localTime(),
-    classId,
-    className: classItem.name || "",
-    teacherId: classItem.teacherId || state.user.uid,
-    teacherName: state.profile?.displayName || state.user.displayName || "",
-    records,
-    markedCount: countMarked(records),
-    presentCount: countPresent(records),
-    absentCount: countAbsent(records),
-    updatedAt: state.isDemo ? new Date().toISOString() : serverTimestamp()
-  };
-  const button = ui["save-attendance"];
-  button.disabled = true;
-  button.textContent = "Salvando…";
-  try {
-    await repository.saveAttendance(entry);
-    state.attendance.dirty = false;
-    toast("Chamada salva com sucesso.");
-    await loadHistory(classId);
-    renderDashboard();
-  } catch (error) {
-    toast(friendlyFirebaseError(error), "error");
-  } finally {
-    button.textContent = "Salvar chamada";
-    renderAttendance();
   }
 }
 
@@ -1504,119 +1142,6 @@ function isoWeekBounds(week) {
   return { start: iso(monday), end: iso(sunday) };
 }
 
-async function buildReport(month, classes, mode = "month") {
-  const { start, end } = mode === "week" ? isoWeekBounds(month) : monthBounds(month);
-  const classReports = [];
-  const individualRows = [];
-  const territory = new Map();
-  let totalMarked = 0;
-  let totalPresent = 0;
-  let sessions = 0;
-
-  for (const classItem of classes) {
-    const students = await loadStudents(classItem.id);
-    const attendance = await repository.getAttendanceRange(classItem.id, start, end);
-    const roster = new Map(students.map((student) => [student.id, student]));
-    const stats = new Map(students.map((student) => [student.id, { student, marked: 0, present: 0, absent: 0, sessions: [] }]));
-    attendance.sort((a, b) => String(a.date).localeCompare(String(b.date)));
-    attendance.forEach((entry) => {
-      const records = entry.records || {};
-      Object.entries(records).forEach(([studentId, record]) => {
-        if (!["P", "F"].includes(record?.status)) return;
-        if (!stats.has(studentId)) {
-          stats.set(studentId, { student: roster.get(studentId) || { id: studentId, fullName: "Registro sem cadastro atual" }, marked: 0, present: 0, absent: 0, sessions: [] });
-        }
-        const row = stats.get(studentId);
-        row.marked += 1;
-        row.present += record.status === "P" ? 1 : 0;
-        row.absent += record.status === "F" ? 1 : 0;
-        row.sessions.push({ date: entry.date, status: record.status });
-      });
-    });
-    const classMarked = [...stats.values()].reduce((sum, row) => sum + row.marked, 0);
-    const classPresent = [...stats.values()].reduce((sum, row) => sum + row.present, 0);
-    totalMarked += classMarked;
-    totalPresent += classPresent;
-    sessions += attendance.length;
-    classReports.push({ classItem, attendance, students, marked: classMarked, present: classPresent, rate: classMarked ? Math.round((classPresent / classMarked) * 100) : null });
-    stats.forEach((row) => {
-      if (!row.marked) return;
-      individualRows.push({
-        className: classItem.name || "Turma sem nome",
-        teacherName: classItem.teacherName || "",
-        student: row.student,
-        marked: row.marked,
-        present: row.present,
-        absent: row.absent,
-        rate: Math.round((row.present / row.marked) * 100),
-        trend: calculateTrend(row.sessions)
-      });
-      const zoneLabel = row.student.territoryZoneName || row.student.geo?.zoneLabel || "";
-      if (zoneLabel) {
-        const zone = territory.get(zoneLabel) || { label: zoneLabel, sector: row.student.territorySector || row.student.geo?.sector || "", students: new Set(), marked: 0, present: 0, absent: 0 };
-        zone.students.add(row.student.id);
-        zone.marked += row.marked;
-        zone.present += row.present;
-        zone.absent += row.absent;
-        territory.set(zoneLabel, zone);
-      }
-    });
-  }
-  individualRows.sort((a, b) => a.rate - b.rate || String(a.student.fullName).localeCompare(String(b.student.fullName), "pt-BR"));
-  const teachers = new Map();
-  classReports.forEach((row) => {
-    const key = row.classItem.teacherId || "sem-responsavel";
-    const current = teachers.get(key) || { name: row.classItem.teacherName || "Professor não identificado", classes: 0, sessions: 0, marked: 0, present: 0 };
-    current.classes += 1;
-    current.sessions += row.attendance.length;
-    current.marked += row.marked;
-    current.present += row.present;
-    teachers.set(key, current);
-  });
-  const teacherReports = [...teachers.values()].map((row) => ({ ...row, rate: row.marked ? Math.round((row.present / row.marked) * 100) : null })).sort((a, b) => String(a.name).localeCompare(String(b.name), "pt-BR"));
-  const territoryReports = [...territory.values()]
-    .filter((row) => row.students.size >= 5)
-    .map((row) => ({ ...row, students: row.students.size, rate: row.marked ? Math.round((row.present / row.marked) * 100) : null }))
-    .sort((a, b) => String(a.label).localeCompare(String(b.label), "pt-BR"));
-  return { month, mode, start, end, classes, classReports, teacherReports, territoryReports, individualRows, totalMarked, totalPresent, sessions, rate: totalMarked ? Math.round((totalPresent / totalMarked) * 100) : 0, generatedAt: new Date() };
-}
-
-function renderReport() {
-  const report = state.report;
-  if (!report) return;
-  ui["report-empty"].classList.add("hidden");
-  ui["report-content"].classList.remove("hidden");
-  const period = report.mode === "week" ? `Semana ${report.month.slice(6)} de ${report.month.slice(0,4)} (${report.start} a ${report.end})` : formatMonth(report.month);
-  const participantCount = report.individualRows.length;
-  const classSummary = report.classReports.map((row) => `
-    <div class="class-report-row"><div><strong>${escapeHtml(row.classItem.name || "Turma")}</strong><small>${row.attendance.length} chamada${row.attendance.length === 1 ? "" : "s"} · ${row.marked} marcação${row.marked === 1 ? "" : "ões"}</small></div><span>${row.rate === null ? "—" : `${row.rate}%`}</span><div class="progress-track"><i style="width:${row.rate || 0}%"></i></div></div>`).join("") || `<p>Nenhuma turma com dados no período.</p>`;
-  const individual = report.individualRows.length ? report.individualRows.map((row) => {
-    const trendClass = row.trend.value > 0 ? "trend-positive" : row.trend.value < 0 ? "trend-negative" : "trend-neutral";
-    return `<tr><td>${escapeHtml(row.student.preferredName || row.student.fullName || "Registro sem cadastro")}</td><td>${escapeHtml(row.className)}</td><td>${row.present}</td><td>${row.absent}</td><td><strong>${row.rate}%</strong></td><td class="${trendClass}">${escapeHtml(row.trend.label)}</td></tr>`;
-  }).join("") : `<tr><td colspan="6">Nenhuma presença ou falta marcada neste período.</td></tr>`;
-  const teachers = report.teacherReports.map((row) => `<div class="teacher-report-row"><div><strong>${escapeHtml(row.name)}</strong><small>${row.classes} turma${row.classes === 1 ? "" : "s"} · ${row.sessions} chamada${row.sessions === 1 ? "" : "s"}</small></div><span>${row.rate === null ? "—" : `${row.rate}%`}</span></div>`).join("") || "<p>Nenhum responsável encontrado no escopo.</p>";
-  const territory = report.territoryReports.map((row) => `<div class="territory-report-row"><div><strong>${escapeHtml(row.label)}</strong><small>${escapeHtml(row.sector || "Setor não informado")} · ${row.students} alunos com marcações</small></div><span>${row.rate === null ? "—" : `${row.rate}%`}</span><div class="progress-track"><i style="width:${row.rate || 0}%"></i></div></div>`).join("") || "<p>O painel territorial mostra somente zonas com pelo menos 5 alunos com marcações no período.</p>";
-  ui["report-content"].innerHTML = `
-    <section class="report-header"><div><p class="eyebrow">RELATÓRIO DE PRESENÇA</p><h3>${escapeHtml(period)}</h3><p>${report.classes.length} turma${report.classes.length === 1 ? "" : "s"} no escopo · acesso ${state.isAdmin ? "administrativo" : "do professor"}</p></div><p class="report-generated">Gerado em ${formatDateTime(report.generatedAt)}<br/>Votorantim · Rede Esportiva</p></section>
-    <section class="report-stat-grid"><article class="report-stat"><span>Presença geral</span><strong>${report.totalMarked ? `${report.rate}%` : "—"}</strong></article><article class="report-stat"><span>Presenças</span><strong>${report.totalPresent}</strong></article><article class="report-stat"><span>Faltas</span><strong>${report.totalMarked - report.totalPresent}</strong></article><article class="report-stat"><span>Chamadas</span><strong>${report.sessions}</strong></article></section>
-    <section class="report-grid"><article class="panel"><h3>Visão por turma</h3><p>Percentual calculado apenas sobre marcações P e F efetivamente salvas.</p><div class="class-report-list">${classSummary}</div></article><article class="panel"><h3>Evolução individual</h3><p>${participantCount ? "Tendência compara as metades do mês quando há registros suficientes." : "Os indicadores individuais aparecerão após as chamadas."}</p><div class="individual-report-wrap"><table class="individual-report"><thead><tr><th>Aluno</th><th>Turma</th><th>P</th><th>F</th><th>Presença</th><th>Tendência</th></tr></thead><tbody>${individual}</tbody></table></div></article></section><section class="report-grid"><article class="panel teacher-report"><h3>Visão por professor</h3><p>Consolidado das turmas incluídas neste relatório. Para um professor, este bloco confirma o próprio escopo.</p><div class="teacher-report-list">${teachers}</div></article><article class="panel territory-report"><h3>Frequência por zona</h3><p>Resumo agregado, sem endereços e com mínimo de 5 alunos com marcações.</p><div class="territory-report-list">${territory}</div></article></section>`;
-}
-
-function exportReportCsv() {
-  const report = state.report;
-  if (!report) {
-    toast("Gere um relatório antes de exportar.", "error");
-    return;
-  }
-  const lines = [
-    ["periodo", "professor", "turma", "aluno", "zona_territorial", "setor_territorial", "presencas", "faltas", "marcacoes", "percentual_presenca", "tendencia"],
-    ...report.individualRows.map((row) => [report.month, row.teacherName, row.className, row.student.preferredName || row.student.fullName || "", row.student.territoryZoneName || row.student.geo?.zoneLabel || "", row.student.territorySector || row.student.geo?.sector || "", row.present, row.absent, row.marked, `${row.rate}%`, row.trend.label])
-  ];
-  const csv = "\uFEFF" + lines.map((line) => line.map(csvCell).join(";")).join("\n");
-  downloadBlob(csv, `relatorio-presenca-${report.mode || "mes"}-${report.month}.csv`, "text/csv;charset=utf-8");
-  toast("CSV preparado para download.");
-}
-
 function printReport() {
   if (!state.report) {
     toast("Gere um relatório antes de salvar em PDF.", "error");
@@ -1705,17 +1230,6 @@ async function importStudents() {
   }
 }
 
-function renderAdmin() {
-  if (!state.isAdmin || !ui["admin-content"]) return;
-  const teachers = new Set(state.classes.map((item) => item.teacherId).filter(Boolean));
-  const active = state.classes.filter((item) => item.active !== false).length;
-  ui["admin-content"].innerHTML = `<div class="admin-stats"><article class="panel stat-card"><div class="stat-label"><span>Turmas no acesso</span><i class="stat-icon">◒</i></div><strong>${state.classes.length}</strong><small>todas as turmas autorizadas</small></article><article class="panel stat-card"><div class="stat-label"><span>Turmas ativas</span><i class="stat-icon">✓</i></div><strong>${active}</strong><small>disponíveis para chamada</small></article><article class="panel stat-card"><div class="stat-label"><span>Professores</span><i class="stat-icon">◉</i></div><strong>${teachers.size}</strong><small>identificados pelas turmas</small></article></div><article class="panel admin-note"><strong>Gestão segura de acesso.</strong> Esta tela não cria administradores. A conta deve ser provisionada fora do navegador e as regras do Firestore publicadas antes da operação real.</article><article class="panel" style="margin-top:16px;padding:20px;overflow:auto"><div class="panel-heading"><div><p class="eyebrow">IMPORTAÇÃO E TURMAS</p><h3>Gestão operacional</h3></div><button class="button button-secondary button-compact" data-action="open-import" type="button">Abrir importação</button></div><p class="muted">Use “Importar nesta turma” para já selecionar o destino. A confirmação de revisão continua obrigatória antes de gravar.</p><table class="admin-table"><thead><tr><th>Turma</th><th>Modalidade</th><th>Professor responsável</th><th>Alunos carregados</th><th>Status</th><th></th></tr></thead><tbody>${state.classes.length ? state.classes.map((item) => `<tr><td>${escapeHtml(item.name || "Turma sem nome")}</td><td>${escapeHtml(item.sport || "—")}</td><td>${escapeHtml(item.teacherName || "—")}</td><td>${(state.studentsByClass[item.id] || []).length}</td><td>${item.active === false ? "Inativa" : "Ativa"}</td><td><button class="row-action" data-action="open-import-for-class" data-id="${escapeAttr(item.id)}" type="button">Importar nesta turma</button></td></tr>`).join("") : "<tr><td colspan=\"6\">Nenhuma turma disponível.</td></tr>"}</tbody></table></article>`;
-}
-
-function renderHelp() {
-  ui["help-accordions"].innerHTML = HELP_ARTICLES.map((item, index) => `<details class="accordion" ${index === 0 ? "open" : ""}><summary>${escapeHtml(item.title)}</summary><div class="accordion-body"><p>${escapeHtml(item.body)}</p></div></details>`).join("");
-}
-
 function startTour() {
   state.tourIndex = 0;
   renderTour();
@@ -1754,48 +1268,6 @@ function renderTour() {
 
 function removeTourHighlight() {
   $$(".tour-target").forEach((element) => element.classList.remove("tour-target"));
-}
-
-function handleDynamicClick(event) {
-  const actionButton = event.target.closest("[data-action]");
-  if (!actionButton) return;
-  const { action, id, classId, tab, status } = actionButton.dataset;
-  if (action === "open-class-dialog") openClassDialog();
-  if (action === "select-class") selectClass(id);
-  if (action === "edit-class") openClassDialog(id);
-  if (action === "delete-class-admin") deleteClassAsAdmin(id);
-  if (action === "open-attendance") openAttendanceFor(id);
-  if (action === "open-import") setActiveView("import");
-  if (action === "open-import-for-class") {
-    ui["import-class"].value = id;
-    setActiveView("import");
-    updateImportReadiness();
-  }
-  if (action === "open-student-dialog") openStudentDialog(classId);
-  if (action === "edit-student") openStudentDialog(classId, id);
-  if (action === "delete-student") deleteStudent(classId, id);
-  if (action === "contact-whatsapp") contactStudent(classId, id, "whatsapp");
-  if (action === "contact-call") contactStudent(classId, id, "call");
-  if (action === "select-territory-zone") {
-    state.selectedTerritoryZoneId = id === state.selectedTerritoryZoneId ? null : id;
-    renderTerritory();
-  }
-  if (action === "detail-tab") { state.classDetailTab = tab; renderClasses(); }
-  if (action === "set-attendance") updateAttendanceStatus(id, status);
-}
-
-function handleDynamicInput(event) {
-  const noteId = event.target.dataset.attendanceNote;
-  if (noteId) {
-    const existing = state.attendance.records[noteId] || {};
-    state.attendance.records[noteId] = { ...existing, note: event.target.value };
-    state.attendance.dirty = true;
-    ui["attendance-save-state"].textContent = "Alterações não salvas";
-    ui["attendance-save-state"].classList.add("changed");
-  }
-  if (event.target.name === "postalCode") event.target.value = formatPostalCode(event.target.value);
-  if (["guardianPhone", "studentPhone", "phone"].includes(event.target.name)) event.target.value = formatPhone(event.target.value);
-  if (event.target.name === "territoryZoneId" && event.target.form === ui["student-form"]) syncTerritoryFields(ui["student-form"]);
 }
 
 async function lookupPostalCode() {
@@ -1950,6 +1422,7 @@ const repository = {
       delete data.students[classId];
       delete data.attendance[classId];
       delete data.classes[classId];
+      Object.keys(data.occurrences || {}).forEach((id) => { if (data.occurrences[id].classId === classId) delete data.occurrences[id]; });
       writeDemoData(data);
       return;
     }
@@ -1963,6 +1436,13 @@ const repository = {
         page.docs.forEach((entry) => batch.delete(entry.ref));
         await batch.commit();
       }
+    }
+    for (;;) {
+      const entries = await getDocs(query(collection(firebase.db, "occurrences"), where("classId", "==", classId), limit(300)));
+      if (entries.empty) break;
+      const batch = writeBatch(firebase.db);
+      entries.docs.forEach((entry) => batch.delete(entry.ref));
+      await batch.commit();
     }
     await deleteDoc(doc(firebase.db, "classes", classId));
   },
@@ -2270,16 +1750,6 @@ function normalizeHeader(value) {
   return String(value || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim().toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_|_$/g, "");
 }
 
-function cleanAttendanceRecords(records) {
-  return Object.fromEntries(Object.entries(records)
-    .filter(([, record]) => ["P", "F"].includes(record?.status))
-    .map(([id, record]) => [id, { status: record.status, note: String(record.note || "").trim() }]));
-}
-
-function countMarked(records = {}) { return Object.values(records).filter((record) => ["P", "F"].includes(record?.status)).length; }
-function countPresent(records = {}) { return Object.values(records).filter((record) => record?.status === "P").length; }
-function countAbsent(records = {}) { return Object.values(records).filter((record) => record?.status === "F").length; }
-
 function calculateTrend(sessions) {
   if (sessions.length < 4) return { value: 0, label: "Sem base" };
   const midpoint = Math.ceil(sessions.length / 2);
@@ -2304,6 +1774,11 @@ function friendlyFirebaseError(error) {
     "auth/popup-blocked": "O navegador bloqueou a janela de acesso. Permita pop-ups e tente novamente.",
     "auth/unauthorized-domain": "Este domínio ainda não está autorizado no Firebase Authentication.",
     "auth/network-request-failed": "Não foi possível conectar ao Firebase. Verifique sua rede.",
+    "auth/invalid-credential": "E-mail ou senha inválidos.",
+    "auth/invalid-email": "Informe um e-mail válido.",
+    "auth/email-already-in-use": "Este e-mail já possui uma conta.",
+    "auth/weak-password": "Use uma senha mais forte.",
+    "auth/operation-not-allowed": "O método de login ainda não foi ativado no Firebase Authentication.",
     "permission-denied": "Seu perfil não tem permissão para esta operação. Verifique as regras do Firestore.",
     "firestore/permission-denied": "Seu perfil não tem permissão para esta operação. Verifique as regras do Firestore.",
     "unavailable": "O serviço está temporariamente indisponível. Tente novamente.",
@@ -2427,3 +1902,976 @@ function escapeHtml(value) {
 }
 
 function escapeAttr(value) { return escapeHtml(value); }
+
+/* ===== V8 upgrade: institutional UX, occurrences, auth email/senha, P/J/F ===== */
+PAGE_TITLES.modalities = ["MODALIDADES", "Modalidades e núcleos"];
+PAGE_TITLES.occurrences = ["OCORRÊNCIAS", "Registro de ocorrências"];
+PAGE_TITLES.settings = ["APARÊNCIA", "Tema e experiência"];
+HELP_ARTICLES.splice(0, HELP_ARTICLES.length,
+  {
+    title: "Como usar a frequência P / J / F?",
+    body: "P indica presente, F indica falta e J indica falta justificada. Sempre que marcar J, descreva o motivo no campo da linha antes de salvar a chamada."
+  },
+  {
+    title: "Como funcionam as ocorrências?",
+    body: "Na aba Ocorrências, escolha a turma, informe data, horário, o tipo do registro e escreva o ocorrido. O vínculo com aluno é opcional."
+  },
+  {
+    title: "Como vincular professor a uma turma?",
+    body: "Na visão de gestão, o administrador pode reatribuir uma turma para um professor que já tenha criado a própria conta. O professor passa a enxergar apenas as turmas atribuídas a ele."
+  },
+  {
+    title: "Quem pode entrar com Google e quem usa e-mail/senha?",
+    body: "O acesso administrativo pode continuar pelo Google, desde que a conta esteja cadastrada em adminUsers. Professores podem entrar com e-mail e senha após a ativação do provedor no Firebase Authentication."
+  },
+  {
+    title: "Como usar WhatsApp e ligação?",
+    body: "Você pode definir no cadastro se o contato preferencial é o responsável, o aluno ou um telefone alternativo, além da permissão para WhatsApp e/ou ligação."
+  },
+  {
+    title: "Como interpretar o mapa e os núcleos?",
+    body: "O mapa cruza os bairros/setores com as turmas vinculadas às zonas aprovadas. A nova lista de relações mostra bairros por núcleo e núcleos por bairro sem expor endereços individuais."
+  }
+);
+state.users = [];
+state.occurrences = [];
+state.theme = safeStorageGet("votoesporte-theme") || "light";
+state.occurrenceFilterClass = "all";
+if (state.unsubscribers) {
+  state.unsubscribers.users = null;
+  state.unsubscribers.occurrences = null;
+}
+
+function applyTheme(theme = "light") {
+  state.theme = theme === "dark" ? "dark" : "light";
+  document.body.dataset.theme = state.theme;
+  safeStorageSet("votoesporte-theme", state.theme);
+  $$(".theme-option").forEach((button) => button.classList.toggle("active", button.dataset.theme === state.theme));
+}
+
+function renderSettings() {
+  applyTheme(state.theme || safeStorageGet("votoesporte-theme") || "light");
+}
+
+function currentAuthEmail() { return String(ui["auth-email"]?.value || "").trim(); }
+function currentAuthPassword() { return String(ui["auth-password"]?.value || "").trim(); }
+
+async function signInWithEmailPassword(event) {
+  event?.preventDefault?.();
+  if (!firebase.auth) return;
+  const email = currentAuthEmail();
+  const password = currentAuthPassword();
+  if (!email || !password) {
+    showAuthMessage("Informe e-mail e senha.");
+    return;
+  }
+  setAuthBusy(true);
+  try {
+    await signInWithEmailAndPassword(firebase.auth, email, password);
+  } catch (error) {
+    showAuthMessage(friendlyFirebaseError(error));
+  } finally {
+    setAuthBusy(false);
+  }
+}
+
+async function signUpWithEmailPassword() {
+  if (!firebase.auth) return;
+  const email = currentAuthEmail();
+  const password = currentAuthPassword();
+  if (!email || !password) {
+    showAuthMessage("Informe e-mail e senha com no mínimo 6 caracteres.");
+    return;
+  }
+  if (password.length < 6) {
+    showAuthMessage("A senha precisa ter no mínimo 6 caracteres.");
+    return;
+  }
+  setAuthBusy(true);
+  try {
+    await createUserWithEmailAndPassword(firebase.auth, email, password);
+    showAuthMessage("Conta criada com sucesso. Complete seu perfil ao entrar.");
+  } catch (error) {
+    showAuthMessage(friendlyFirebaseError(error));
+  } finally {
+    setAuthBusy(false);
+  }
+}
+
+function wireStaticEvents() {
+  ui["google-sign-in"]?.addEventListener("click", signInWithGoogle);
+  ui["demo-sign-in"]?.addEventListener("click", startDemo);
+  ui["email-auth-form"]?.addEventListener("submit", signInWithEmailPassword);
+  ui["email-sign-up"]?.addEventListener("click", signUpWithEmailPassword);
+  ui["mobile-menu"]?.addEventListener("click", () => ui.sidebar.classList.toggle("open"));
+  ui["profile-menu"]?.addEventListener("click", () => {
+    const open = ui["profile-popover"].classList.toggle("hidden");
+    ui["profile-menu"].setAttribute("aria-expanded", String(!open));
+  });
+  ui["edit-profile"]?.addEventListener("click", () => {
+    ui["profile-popover"].classList.add("hidden");
+    openProfileDialog();
+  });
+  ui["sign-out"]?.addEventListener("click", signOutUser);
+  ui["quick-attendance"]?.addEventListener("click", () => openAttendanceFor(state.selectedClassId || state.classes[0]?.id));
+  ui["dashboard-add-class"]?.addEventListener("click", () => openClassDialog());
+  ui["dashboard-refresh"]?.addEventListener("click", refreshIndicators);
+  ui["modalities-filter"]?.addEventListener("input", renderModalities);
+  ui["add-class"]?.addEventListener("click", () => openClassDialog());
+  ui["save-attendance"]?.addEventListener("click", saveAttendance);
+  ui["mark-all-present"]?.addEventListener("click", markAllPresent);
+  ui["clear-attendance"]?.addEventListener("click", clearAttendance);
+  ui["attendance-class"]?.addEventListener("change", onAttendanceFilterChange);
+  ui["attendance-date"]?.addEventListener("change", onAttendanceFilterChange);
+  ui["attendance-time"]?.addEventListener("change", () => {
+    state.attendance.sessionTime = ui["attendance-time"].value || localTime();
+    state.attendance.dirty = true;
+    renderAttendance();
+  });
+  ui["generate-report"]?.addEventListener("click", generateReport);
+  ui["export-csv"]?.addEventListener("click", exportReportCsv);
+  ui["print-report"]?.addEventListener("click", printReport);
+  ui["import-file"]?.addEventListener("change", handleCsvFile);
+  ui["import-class"]?.addEventListener("change", updateImportReadiness);
+  ui["import-reviewed"]?.addEventListener("change", updateImportReadiness);
+  ui["lookup-postal-code"]?.addEventListener("click", lookupPostalCode);
+  ui["confirm-import"]?.addEventListener("click", importStudents);
+  ui["open-territory-import"]?.addEventListener("click", openTerritoryImportDialog);
+  ui["territory-import-form"]?.addEventListener("submit", importTerritoryZones);
+  ui["territory-sector-filter"]?.addEventListener("change", () => {
+    state.territoryFilter = ui["territory-sector-filter"].value || "all";
+    state.selectedTerritoryZoneId = null;
+    renderTerritory();
+    renderTerritoryLinks();
+  });
+  ui["start-tour"]?.addEventListener("click", startTour);
+  ui["tour-back"]?.addEventListener("click", () => advanceTour(-1));
+  ui["tour-next"]?.addEventListener("click", () => advanceTour(1));
+  ui["profile-form"]?.addEventListener("submit", saveProfile);
+  ui["class-form"]?.addEventListener("submit", saveClass);
+  ui["student-form"]?.addEventListener("submit", saveStudent);
+  ui["occurrence-form"]?.addEventListener("submit", saveOccurrence);
+  document.addEventListener("change", (event) => {
+    const id = event.target?.dataset?.contactTarget;
+    if (id) updateStudentContactTarget(event.target.dataset.classId, id, event.target.value);
+  });
+  ui["occurrence-class"]?.addEventListener("change", async () => {
+    const id = ui["occurrence-class"]?.value;
+    if (id && !(id in state.studentsByClass)) await loadStudents(id);
+    syncOccurrenceStudents();
+  });
+  ui["occurrence-filter-class"]?.addEventListener("change", () => {
+    state.occurrenceFilterClass = ui["occurrence-filter-class"].value || "all";
+    renderOccurrences();
+  });
+  ui["report-period-type"]?.addEventListener("change", () => {
+    const mode = ui["report-period-type"].value;
+    ui["report-month-wrap"].hidden = mode !== "month";
+    ui["report-week-wrap"].hidden = mode !== "week";
+  });
+  $$("[data-view]").forEach((button) => button.addEventListener("click", () => setActiveView(button.dataset.view)));
+  $$("[data-close-dialog]").forEach((button) => button.addEventListener("click", () => closeDialog(button.dataset.closeDialog)));
+  $$(".theme-option").forEach((button) => button.addEventListener("click", () => applyTheme(button.dataset.theme || "light")));
+  document.addEventListener("click", handleDynamicClick);
+  document.addEventListener("input", handleDynamicInput);
+  document.addEventListener("keydown", (event) => {
+    if (event.key === "Escape") {
+      ui.sidebar.classList.remove("open");
+      removeTourHighlight();
+    }
+    const mapAction = event.target.closest?.('[data-action="select-territory-zone"]');
+    if (mapAction && ["Enter", " "].includes(event.key)) {
+      event.preventDefault();
+      mapAction.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    }
+  });
+  window.addEventListener("storage", (event) => {
+    if (state.isDemo && event.key === DEMO_STORE_KEY) {
+      subscribeClasses();
+      subscribeTerritoryZones();
+      subscribeOccurrences();
+    }
+  });
+}
+
+async function bootstrap() {
+  wireStaticEvents();
+  applyTheme(state.theme || "light");
+  if (ui["attendance-date"]) ui["attendance-date"].value = state.attendance.date;
+  if (ui["report-month"]) ui["report-month"].value = localMonth();
+  if (ui["occurrence-date"]) ui["occurrence-date"].value = localDate();
+  if (ui["occurrence-time"]) ui["occurrence-time"].value = localTime();
+  renderHelp();
+  renderSettings();
+  await loadBundledTerritoryZones();
+
+  const configured = isFirebaseConfigured(window.FIREBASE_CONFIG);
+  if (!configured) {
+    ui["firebase-setup-card"]?.classList.remove("hidden");
+    if (ui["google-sign-in"]) ui["google-sign-in"].disabled = true;
+    ui["demo-sign-in"]?.classList.remove("hidden");
+    finishLoading();
+    showAuthScreen();
+    return;
+  }
+
+  try {
+    firebase = createFirebase(window.FIREBASE_CONFIG);
+    state.firebaseEnabled = true;
+    onAuthStateChanged(firebase.auth, handleFirebaseUser, (error) => {
+      console.error("Firebase auth listener error:", error);
+      finishLoading();
+      showAuthScreen();
+      showAuthMessage("Falha ao conectar com a autenticação: " + friendlyFirebaseError(error));
+    });
+    getRedirectResult(firebase.auth).catch((error) => {
+      console.error("Firebase redirect error:", error);
+      showAuthMessage(friendlyFirebaseError(error));
+    });
+  } catch (error) {
+    console.error("Firebase initialization failed", error);
+    ui["firebase-setup-card"]?.classList.remove("hidden");
+    ui["demo-sign-in"]?.classList.remove("hidden");
+    showAuthMessage("Não foi possível iniciar o Firebase. Revise firebase-config.js.");
+    finishLoading();
+  }
+}
+
+async function prepareWorkspace() {
+  try {
+    finishLoading();
+    state.profile = await repository.getProfile();
+    state.isAdmin = state.isDemo || (!state.isDemo && (await repository.isAdmin()));
+    state.profile ||= null;
+
+    ui["auth-screen"]?.classList.add("hidden");
+    ui.workspace?.classList.remove("hidden");
+    ui["mode-badge"]?.classList.toggle("hidden", !state.isDemo);
+    ui["admin-nav"]?.classList.toggle("hidden", !state.isAdmin);
+    ui["open-territory-import"]?.classList.toggle("hidden", !state.isAdmin);
+    updateProfileUi();
+    setActiveView("dashboard", { preserveScroll: true });
+    subscribeUsers();
+    subscribeClasses();
+    subscribeTerritoryZones();
+    subscribeOccurrences();
+    renderSettings();
+
+    if (!state.profile) {
+      openProfileDialog();
+      toast("Confirme seu perfil antes de cadastrar turmas.");
+    }
+  } catch (error) {
+    console.error(error);
+    showAuthMessage(friendlyFirebaseError(error));
+    showAuthScreen();
+  }
+}
+
+function clearWorkspaceState() {
+  stopSubscriptions();
+  state.profile = null;
+  state.user = null;
+  state.classes = [];
+  state.users = [];
+  state.occurrences = [];
+  state.territoryZones = [];
+  state.studentsByClass = {};
+  state.histories = {};
+  state.monthlyHistories = {};
+  state.selectedClassId = null;
+  state.report = null;
+}
+
+function stopSubscriptions() {
+  Object.values(state.unsubscribers).forEach((unsubscribe) => unsubscribe?.());
+  state.monthWatchers.forEach((unsubscribe) => unsubscribe?.());
+  state.monthWatchers.clear();
+  state.unsubscribers = { classes: null, selectedStudents: null, territoryZones: null, users: null, occurrences: null };
+  state.selectedStudentsSubscriptionId = null;
+}
+
+function syncMonthlyAttendance() {
+  const current = new Set(state.classes.map((item) => item.id));
+  for (const [id, stop] of state.monthWatchers) {
+    if (!current.has(id)) {
+      stop();
+      state.monthWatchers.delete(id);
+      delete state.monthlyHistories[id];
+    }
+  }
+  if (state.isDemo) {
+    state.classes.forEach((item) => {
+      state.monthlyHistories[item.id] = repository.getDemoAttendance(item.id).filter((entry) => entry.date?.startsWith(localMonth()));
+    });
+    return;
+  }
+  const start = `${localMonth()}-01`;
+  const end = `${localMonth()}-31`;
+  state.classes.forEach((item) => {
+    if (state.monthWatchers.has(item.id)) return;
+    const q = query(collection(firebase.db, "classes", item.id, "attendance"), where("date", ">=", start), where("date", "<=", end));
+    const stop = onSnapshot(q, (snapshot) => {
+      state.monthlyHistories[item.id] = snapshot.docs.map((docItem) => ({ id: docItem.id, ...docItem.data() }));
+      renderDashboard();
+    }, (error) => console.warn("Resumo mensal indisponível para uma turma", item.id, error));
+    state.monthWatchers.set(item.id, stop);
+  });
+}
+
+function setAuthBusy(busy) {
+  [ui["google-sign-in"], ui["email-sign-in"], ui["email-sign-up"]].forEach((button) => { if (button) button.disabled = busy; });
+  if (ui["google-sign-in"]) ui["google-sign-in"].lastChild.textContent = busy ? "Abrindo acesso…" : "Entrar com Google (admin)";
+  if (ui["email-sign-in"]) ui["email-sign-in"].textContent = busy ? "Entrando…" : "Entrar com e-mail";
+  if (ui["email-sign-up"]) ui["email-sign-up"].textContent = busy ? "Criando…" : "Criar conta";
+}
+
+function setActiveView(view, { preserveScroll = false } = {}) {
+  if (view === "admin" && !state.isAdmin) view = "dashboard";
+  state.activeView = view;
+  $$(".view").forEach((section) => section.classList.toggle("active", section.id === `view-${view}`));
+  $$(".nav-item[data-view]").forEach((button) => button.classList.toggle("active", button.dataset.view === view));
+  const [kicker, title] = PAGE_TITLES[view] || PAGE_TITLES.dashboard;
+  ui["context-kicker"].textContent = kicker;
+  ui["page-title"].textContent = title;
+  ui.sidebar.classList.remove("open");
+  if (!preserveScroll) window.scrollTo({ top: 0, behavior: "smooth" });
+
+  if (view === "classes") ensureClassSelection();
+  if (view === "attendance") ensureAttendanceReady();
+  if (view === "admin") renderAdmin();
+  if (view === "territory") { renderTerritory(); renderTerritoryLinks(); }
+  if (view === "occurrences") renderOccurrences();
+  if (view === "modalities") renderModalities();
+  if (view === "settings") renderSettings();
+}
+
+function subscribeUsers() {
+  state.unsubscribers.users?.();
+  if (!state.isAdmin) {
+    state.users = [];
+    return;
+  }
+  if (state.isDemo) {
+    state.users = state.profile ? [{ id: state.user.uid, displayName: state.profile.displayName || "Administrador", email: state.user.email || "" }] : [];
+    renderAdmin();
+    return;
+  }
+  state.unsubscribers.users = onSnapshot(query(collection(firebase.db, "users"), orderBy("displayName")), (snapshot) => {
+    state.users = snapshot.docs.map((item) => ({ id: item.id, ...item.data() }));
+    renderAdmin();
+  }, (error) => console.error("Falha ao carregar usuários", error));
+}
+
+function subscribeOccurrences() {
+  state.unsubscribers.occurrences?.();
+  if (state.isDemo) {
+    state.occurrences = repository.getDemoOccurrences();
+    renderOccurrences();
+    renderDashboard();
+    return;
+  }
+  const source = collection(firebase.db, "occurrences");
+  const occurrenceQuery = state.isAdmin ? query(source, limit(80)) : query(source, where("teacherId", "==", state.user.uid), limit(80));
+  state.unsubscribers.occurrences = onSnapshot(occurrenceQuery, (snapshot) => {
+    state.occurrences = snapshot.docs.map((item) => ({ id: item.id, ...item.data() }))
+      .sort((a, b) => `${b.date || ""}T${b.time || "00:00"}`.localeCompare(`${a.date || ""}T${a.time || "00:00"}`));
+    renderOccurrences();
+    renderDashboard();
+  }, (error) => console.error("Falha ao carregar ocorrências", error));
+}
+
+function afterClassesChanged() {
+  if (state.selectedClassId && !state.classes.some((item) => item.id === state.selectedClassId)) {
+    state.selectedClassId = null;
+  }
+  if (state.classes.length && !state.selectedClassId) {
+    state.selectedClassId = state.classes[0].id;
+    observeSelectedStudents(state.selectedClassId);
+    loadHistory(state.selectedClassId);
+  }
+  if (!state.classes.length) state.selectedClassId = null;
+  refreshClassSelectors();
+  renderDashboard();
+  renderClasses();
+  renderAdmin();
+  if (state.activeView === "territory") {
+    renderTerritory();
+    renderTerritoryLinks();
+  }
+  renderOccurrences();
+  if (state.activeView === "modalities") renderModalities();
+  if (state.attendance.classId) renderAttendance();
+  syncMonthlyAttendance();
+  hydrateCensusStudents();
+}
+
+function refreshClassSelectors() {
+  const labels = state.classes.map((item) => `<option value="${escapeAttr(item.id)}">${escapeHtml(item.name || "Turma sem nome")}</option>`).join("");
+  const selects = [ui["attendance-class"], ui["import-class"], ui["occurrence-class"]];
+  selects.filter(Boolean).forEach((select) => {
+    const prior = select.value;
+    select.innerHTML = state.classes.length ? `<option value="">Selecionar turma</option>${labels}` : `<option value="">Nenhuma turma cadastrada</option>`;
+    select.value = state.classes.some((item) => item.id === prior) ? prior : "";
+    select.disabled = !state.classes.length;
+  });
+
+  if (ui["occurrence-filter-class"]) {
+    const prior = ui["occurrence-filter-class"].value || "all";
+    ui["occurrence-filter-class"].innerHTML = `<option value="all">Todas</option>${labels}`;
+    ui["occurrence-filter-class"].value = state.classes.some((item) => item.id === prior) || prior === "all" ? prior : "all";
+  }
+
+  const reportPrior = ui["report-class"].value;
+  ui["report-class"].innerHTML = `<option value="all">${state.isAdmin ? "Todas as turmas acessíveis" : "Todas as minhas turmas"}</option>${labels}`;
+  ui["report-class"].value = state.classes.some((item) => item.id === reportPrior) || reportPrior === "all" ? reportPrior : "all";
+
+  if (!state.attendance.classId && state.classes.length) state.attendance.classId = state.selectedClassId || state.classes[0].id;
+  if (state.attendance.classId && state.classes.some((item) => item.id === state.attendance.classId)) ui["attendance-class"].value = state.attendance.classId;
+
+  if (!ui["occurrence-class"]?.value && state.classes.length) ui["occurrence-class"].value = state.selectedClassId || state.classes[0].id;
+  syncOccurrenceStudents();
+}
+
+function syncOccurrenceStudents() {
+  if (!ui["occurrence-student"]) return;
+  const classId = ui["occurrence-class"]?.value || state.selectedClassId || "";
+  const students = state.studentsByClass[classId] || [];
+  const prior = ui["occurrence-student"].value;
+  ui["occurrence-student"].innerHTML = `<option value="">Sem aluno específico</option>${students.map((student) => `<option value="${escapeAttr(student.id)}">${escapeHtml(student.preferredName || student.fullName || "Aluno")}</option>`).join("")}`;
+  ui["occurrence-student"].value = students.some((student) => student.id === prior) ? prior : "";
+}
+
+function updateProfileUi() {
+  const displayName = state.profile?.displayName || state.user?.displayName || "Perfil";
+  ui["profile-name"].textContent = displayName;
+  ui["profile-avatar"].textContent = initials(displayName);
+  ui["dashboard-subtitle"].textContent = state.profile
+    ? `Olá, ${displayName.split(" ")[0] || displayName}. Aqui está a visão operacional das suas turmas, frequência, ocorrências e território.`
+    : "Confirme seu perfil profissional para começar a organizar suas turmas.";
+}
+
+function renderDashboard() {
+  renderCensoAnalytics();
+  const totalStudents = Object.values(state.studentsByClass).reduce((sum, list) => sum + list.length, 0);
+  const currentMonth = localMonth();
+  const histories = Object.values(state.monthlyHistories).flat().filter((entry) => entry.date?.startsWith(currentMonth));
+  const marked = histories.reduce((sum, entry) => sum + Number(entry.markedCount || countMarked(entry.records)), 0);
+  const present = histories.reduce((sum, entry) => sum + Number(entry.presentCount || countPresent(entry.records)), 0);
+  const justified = histories.reduce((sum, entry) => sum + Number(entry.justifiedCount || countJustified(entry.records)), 0);
+  const rate = marked ? Math.round((present / marked) * 100) : 0;
+  const latestAttendance = [...histories].sort((a, b) => `${b.date || ""}T${b.sessionTime || "00:00"}`.localeCompare(`${a.date || ""}T${a.sessionTime || "00:00"}`))[0];
+  const latestPresent = latestAttendance ? Number(latestAttendance.presentCount || countPresent(latestAttendance.records)) : 0;
+  const monthOccurrences = state.occurrences.filter((item) => String(item.date || "").startsWith(currentMonth)).length;
+
+  const seen = new Set();
+  Object.values(state.studentsByClass).flat().forEach((student) => {
+    const key = [String(student.fullName || "").trim().toLocaleLowerCase("pt-BR"), student.birthDate || ""].join("|");
+    if (key !== "|") seen.add(key);
+  });
+  const uniqueParticipants = seen.size;
+  const activeClasses = state.classes.filter((item) => item.active !== false).length;
+  const sports = new Set(state.classes.map((item) => item.sport).filter(Boolean)).size;
+  const locations = new Set(state.classes.map((item) => item.location).filter(Boolean)).size;
+  ui["dashboard-stats"].innerHTML = [
+    ["Participantes identificados", uniqueParticipants || "—", "estimativa entre os cadastros carregados", "◉"],
+    ["Matrículas carregadas", totalStudents || "—", "vínculos nas turmas acessíveis", "◎"],
+    ["Turmas ativas", activeClasses, "turmas acessíveis", "◒"],
+    ["Atividades", sports, "modalidades das turmas", "◆"],
+    ["Locais", locations, "polos das turmas", "⌖"],
+    ["Chamadas no mês", histories.length, "registros já salvos", "✓"],
+    ["Presença no mês", marked ? `${rate}%` : "—", marked ? `${present} presença${present === 1 ? "" : "s"} marcada${present === 1 ? "" : "s"}` : "aguardando primeira chamada", "↗"],
+    ["Faltas justificadas", justified || "—", justified ? "marcadas no período" : "sem justificativas salvas", "J"],
+    ["Ocorrências do mês", monthOccurrences || "—", monthOccurrences ? "registros operacionais" : "nenhuma ocorrência", "⚑"],
+    ["Na última chamada", latestAttendance ? latestPresent : "—", latestAttendance ? `${formatDate(latestAttendance.date)}${latestAttendance.sessionTime ? ` às ${latestAttendance.sessionTime}` : ""}` : "aguardando primeira chamada", "◉"]
+  ].map(([label, value, note, icon]) => `<article class="panel stat-card"><div class="stat-label"><span>${label}</span><i class="stat-icon" aria-hidden="true">${icon}</i></div><strong>${value}</strong><small>${note}</small></article>`).join("");
+
+  if (!state.classes.length) {
+    ui["today-classes"].innerHTML = emptyInline("Nenhuma turma cadastrada", "Cadastre sua primeira turma para criar listas e chamadas.", "Cadastrar turma", "open-class-dialog");
+  } else {
+    ui["today-classes"].innerHTML = state.classes.slice(0, 4).map((item) => `
+      <div class="today-item">
+        <div><h4>${escapeHtml(item.name || "Turma sem nome")}</h4><p>${escapeHtml([item.sport, item.schedule, item.teacherName].filter(Boolean).join(" · ") || "Sem horário informado")}</p></div>
+        <button class="button button-secondary" data-action="open-attendance" data-id="${escapeAttr(item.id)}" type="button">Chamar</button>
+      </div>`).join("");
+  }
+
+  const progressSource = state.classes.map((item) => {
+    const entries = (state.monthlyHistories[item.id] || []).filter((entry) => entry.date?.startsWith(currentMonth));
+    const entryMarked = entries.reduce((sum, entry) => sum + Number(entry.markedCount || countMarked(entry.records)), 0);
+    const entryPresent = entries.reduce((sum, entry) => sum + Number(entry.presentCount || countPresent(entry.records)), 0);
+    return { item, rate: entryMarked ? Math.round((entryPresent / entryMarked) * 100) : null, entries: entries.length };
+  }).filter((row) => row.rate !== null);
+
+  ui["dashboard-progress"].innerHTML = progressSource.length
+    ? `<div class="progress-list">${progressSource.slice(0, 5).map((row) => `<div class="progress-item"><strong>${escapeHtml(row.item.name || "Turma")}</strong><span>${row.rate}%</span><div class="progress-track"><i style="width:${row.rate}%"></i></div></div>`).join("")}</div>`
+    : "Ainda não há chamadas concluídas neste período.";
+}
+
+function getStudentContact(student) {
+  const target = student.contactTarget || student.contact?.target || "guardian";
+  const candidates = {
+    guardian: { phone: student.guardianPhone || student.contact?.guardianPhone || "", label: student.guardianName || "responsável" },
+    student: { phone: student.studentPhone || student.contact?.studentPhone || "", label: student.preferredName || student.fullName || "aluno" },
+    alternate: { phone: student.phone || student.contact?.alternatePhone || "", label: "contato alternativo" }
+  };
+  const selected = candidates[target] || candidates.guardian;
+  return { ...selected, target, permission: student.contactPermission || student.contact?.permission || "not_informed" };
+}
+
+function renderContactActions(student, classId) {
+  const contact = getStudentContact(student);
+  const whatsAppDisabled = !contact.phone || !isContactAllowed(contact.permission, "whatsapp");
+  const callDisabled = !contact.phone || !isContactAllowed(contact.permission, "call");
+  return `<div class="contact-actions"><select class="contact-target-select" data-contact-target="${escapeAttr(student.id)}" data-class-id="${escapeAttr(classId)}" aria-label="Contato preferencial de ${escapeAttr(student.preferredName || student.fullName || "aluno")}"><option value="guardian" ${contact.target === "guardian" ? "selected" : ""}>Responsável</option><option value="student" ${contact.target === "student" ? "selected" : ""}>Aluno</option><option value="alternate" ${contact.target === "alternate" ? "selected" : ""}>Alternativo</option></select><div><button class="contact-action whatsapp" data-action="contact-whatsapp" data-id="${escapeAttr(student.id)}" data-class-id="${escapeAttr(classId)}" type="button" ${whatsAppDisabled ? "disabled" : ""} aria-label="Abrir WhatsApp de ${escapeAttr(contact.label)}">WhatsApp</button><button class="contact-action call" data-action="contact-call" data-id="${escapeAttr(student.id)}" data-class-id="${escapeAttr(classId)}" type="button" ${callDisabled ? "disabled" : ""} aria-label="Ligar para ${escapeAttr(contact.label)}">Ligar</button></div></div>`;
+}
+
+function renderAttendance() {
+  const classId = state.attendance.classId || state.selectedClassId || state.classes[0]?.id || "";
+  const students = state.studentsByClass[classId] || [];
+  const records = state.attendance.records || {};
+  const marked = countMarked(records);
+  ui["attendance-date"].value = state.attendance.date || localDate();
+  ui["attendance-time"].value = state.attendance.sessionTime || localTime();
+  if (classId) ui["attendance-class"].value = classId;
+  ui["attendance-marked"].textContent = `${marked} / ${students.length}`;
+  ui["attendance-progress"].style.width = students.length ? `${Math.round((marked / students.length) * 100)}%` : "0%";
+  ui["attendance-save-state"].textContent = state.attendance.dirty ? "Alterações não salvas" : "Sem alterações";
+  ui["attendance-save-state"].classList.toggle("changed", state.attendance.dirty);
+  ui["save-attendance"].disabled = !classId || !students.length;
+  ui["clear-attendance"].disabled = !marked;
+  if (!state.classes.length) {
+    ui["attendance-helper"].textContent = "Cadastre uma turma antes de fazer a chamada.";
+    ui["attendance-list"].innerHTML = `<div class="empty-state"><span aria-hidden="true">◒</span><h3>Nenhuma turma disponível</h3><p>Crie uma turma e depois inclua os alunos para registrar presenças.</p><button class="button button-secondary" data-action="open-class-dialog" type="button">Cadastrar turma</button></div>`;
+    return;
+  }
+  if (!classId) {
+    ui["attendance-helper"].textContent = "Selecione uma turma para começar.";
+    ui["attendance-list"].innerHTML = `<div class="empty-state"><span aria-hidden="true">✓</span><h3>Escolha uma turma</h3><p>A lista de alunos será mostrada aqui.</p></div>`;
+    return;
+  }
+  const present = countPresent(records);
+  const justified = countJustified(records);
+  const moment = state.attendance.sessionTime || "horário não informado";
+  ui["attendance-helper"].textContent = students.length ? `Nesta chamada de ${formatDate(state.attendance.date)} às ${moment}, ${present} presente${present === 1 ? "" : "s"}, ${justified} justificativa${justified === 1 ? "" : "s"}. Use P, J ou F.` : "Esta turma ainda não tem alunos cadastrados.";
+  ui["attendance-list"].innerHTML = students.length ? `<div class="attendance-legend"><span>P = Presente</span><span>J = Justificada</span><span>F = Falta</span></div>${students.map((student) => {
+    const record = records[student.id] || {};
+    const status = record.status || "";
+    const rowClass = status === "P" ? "has-present" : status === "F" ? "has-absent" : status === "J" ? "has-justified" : "";
+    const context = [student.enrollmentCode || "Sem código de matrícula", student.territoryZoneName || student.geo?.zoneLabel].filter(Boolean).join(" · ");
+    return `<div class="attendance-row ${rowClass}"><div class="attendance-person"><span class="student-initial">${initials(student.preferredName || student.fullName)}</span><div><strong>${escapeHtml(student.preferredName || student.fullName || "Sem nome")}</strong><small>${escapeHtml(context)}</small></div></div><div class="attendance-note"><input data-attendance-note="${escapeAttr(student.id)}" value="${escapeAttr(record.note || "")}" maxlength="160" placeholder="${status === "J" ? "Justificativa obrigatória" : "Observação opcional"}" aria-label="Nota para ${escapeAttr(student.preferredName || student.fullName || "aluno")}" /></div><div class="attendance-actions"><button class="attendance-status present ${status === "P" ? "active" : ""}" data-action="set-attendance" data-id="${escapeAttr(student.id)}" data-status="P" type="button" aria-pressed="${status === "P"}">P</button><button class="attendance-status justified ${status === "J" ? "active" : ""}" data-action="set-attendance" data-id="${escapeAttr(student.id)}" data-status="J" type="button" aria-pressed="${status === "J"}">J</button><button class="attendance-status absent ${status === "F" ? "active" : ""}" data-action="set-attendance" data-id="${escapeAttr(student.id)}" data-status="F" type="button" aria-pressed="${status === "F"}">F</button></div></div>`;
+  }).join("")}` : `<div class="empty-state"><span aria-hidden="true">+</span><h3>Inclua alunos nesta turma</h3><p>Sem alunos não é possível registrar uma chamada.</p><button class="button button-secondary" data-action="open-student-dialog" data-class-id="${escapeAttr(classId)}" type="button">Cadastrar aluno</button></div>`;
+}
+
+function updateAttendanceStatus(studentId, status) {
+  const existing = state.attendance.records[studentId] || {};
+  if (existing.status === status) {
+    delete state.attendance.records[studentId];
+  } else {
+    state.attendance.records[studentId] = { ...existing, status };
+  }
+  state.attendance.dirty = true;
+  renderAttendance();
+}
+
+function markAllPresent() {
+  const students = state.studentsByClass[state.attendance.classId] || [];
+  students.forEach((student) => {
+    state.attendance.records[student.id] = { ...(state.attendance.records[student.id] || {}), status: "P" };
+  });
+  state.attendance.dirty = true;
+  renderAttendance();
+}
+
+function clearAttendance() {
+  state.attendance.records = {};
+  state.attendance.dirty = true;
+  renderAttendance();
+}
+
+async function saveAttendance() {
+  const { classId, date, sessionTime } = state.attendance;
+  const classItem = state.classes.find((item) => item.id === classId);
+  const students = state.studentsByClass[classId] || [];
+  if (!classItem || !students.length) return;
+  const marked = countMarked(state.attendance.records);
+  if (!marked) {
+    toast("Marque ao menos uma presença, justificativa ou falta antes de salvar.", "error");
+    return;
+  }
+  const justifiedWithoutNote = Object.values(state.attendance.records).some((record) => record?.status === "J" && !String(record.note || "").trim());
+  if (justifiedWithoutNote) {
+    toast("Toda falta justificada precisa de uma descrição.", "error");
+    return;
+  }
+  const records = cleanAttendanceRecords(state.attendance.records);
+  const entry = {
+    date,
+    sessionTime: sessionTime || localTime(),
+    classId,
+    className: classItem.name || "",
+    teacherId: classItem.teacherId || state.user.uid,
+    teacherName: classItem.teacherName || state.profile?.displayName || state.user.displayName || "",
+    records,
+    markedCount: countMarked(records),
+    presentCount: countPresent(records),
+    absentCount: countAbsent(records),
+    justifiedCount: countJustified(records),
+    updatedAt: state.isDemo ? new Date().toISOString() : serverTimestamp()
+  };
+  const button = ui["save-attendance"];
+  button.disabled = true;
+  button.textContent = "Salvando…";
+  try {
+    await repository.saveAttendance(entry);
+    state.attendance.dirty = false;
+    toast("Chamada salva com sucesso.");
+    await loadHistory(classId);
+    if (state.isDemo) syncMonthlyAttendance();
+    renderDashboard();
+  } catch (error) {
+    toast(friendlyFirebaseError(error), "error");
+  } finally {
+    button.textContent = "Salvar frequência";
+    renderAttendance();
+  }
+}
+
+async function buildReport(month, classes, mode = "month") {
+  const { start, end } = mode === "week" ? isoWeekBounds(month) : monthBounds(month);
+  const classReports = [];
+  const individualRows = [];
+  const territory = new Map();
+  let totalMarked = 0;
+  let totalPresent = 0;
+  let totalJustified = 0;
+  let sessions = 0;
+
+  for (const classItem of classes) {
+    const students = await loadStudents(classItem.id);
+    const attendance = await repository.getAttendanceRange(classItem.id, start, end);
+    const roster = new Map(students.map((student) => [student.id, student]));
+    const stats = new Map(students.map((student) => [student.id, { student, marked: 0, present: 0, absent: 0, justified: 0, sessions: [] }]));
+    attendance.sort((a, b) => String(a.date).localeCompare(String(b.date)));
+    attendance.forEach((entry) => {
+      const records = entry.records || {};
+      Object.entries(records).forEach(([studentId, record]) => {
+        if (!["P", "F", "J"].includes(record?.status)) return;
+        if (!stats.has(studentId)) stats.set(studentId, { student: roster.get(studentId) || { id: studentId, fullName: "Registro sem cadastro atual" }, marked: 0, present: 0, absent: 0, justified: 0, sessions: [] });
+        const row = stats.get(studentId);
+        row.marked += 1;
+        row.present += record.status === "P" ? 1 : 0;
+        row.absent += record.status === "F" ? 1 : 0;
+        row.justified += record.status === "J" ? 1 : 0;
+        row.sessions.push({ date: entry.date, status: record.status });
+      });
+    });
+    const classMarked = [...stats.values()].reduce((sum, row) => sum + row.marked, 0);
+    const classPresent = [...stats.values()].reduce((sum, row) => sum + row.present, 0);
+    const classJustified = [...stats.values()].reduce((sum, row) => sum + row.justified, 0);
+    totalMarked += classMarked;
+    totalPresent += classPresent;
+    totalJustified += classJustified;
+    sessions += attendance.length;
+    classReports.push({ classItem, attendance, students, marked: classMarked, present: classPresent, justified: classJustified, rate: classMarked ? Math.round((classPresent / classMarked) * 100) : null });
+    stats.forEach((row) => {
+      if (!row.marked) return;
+      individualRows.push({
+        className: classItem.name || "Turma sem nome",
+        teacherName: classItem.teacherName || "",
+        student: row.student,
+        marked: row.marked,
+        present: row.present,
+        absent: row.absent,
+        justified: row.justified,
+        rate: Math.round((row.present / row.marked) * 100),
+        trend: calculateTrend(row.sessions)
+      });
+      const zoneLabel = row.student.territoryZoneName || row.student.geo?.zoneLabel || "";
+      if (zoneLabel) {
+        const zone = territory.get(zoneLabel) || { label: zoneLabel, sector: row.student.territorySector || row.student.geo?.sector || "", students: new Set(), marked: 0, present: 0, absent: 0, justified: 0 };
+        zone.students.add(row.student.id);
+        zone.marked += row.marked;
+        zone.present += row.present;
+        zone.absent += row.absent;
+        zone.justified += row.justified;
+        territory.set(zoneLabel, zone);
+      }
+    });
+  }
+  individualRows.sort((a, b) => a.rate - b.rate || String(a.student.fullName).localeCompare(String(b.student.fullName), "pt-BR"));
+  const teachers = new Map();
+  classReports.forEach((row) => {
+    const key = row.classItem.teacherId || "sem-responsavel";
+    const current = teachers.get(key) || { name: row.classItem.teacherName || "Professor não identificado", classes: 0, sessions: 0, marked: 0, present: 0, justified: 0 };
+    current.classes += 1;
+    current.sessions += row.attendance.length;
+    current.marked += row.marked;
+    current.present += row.present;
+    current.justified += row.justified;
+    teachers.set(key, current);
+  });
+  const teacherReports = [...teachers.values()].map((row) => ({ ...row, rate: row.marked ? Math.round((row.present / row.marked) * 100) : null })).sort((a, b) => String(a.name).localeCompare(String(b.name), "pt-BR"));
+  const territoryReports = [...territory.values()].filter((row) => row.students.size >= 5).map((row) => ({ ...row, students: row.students.size, rate: row.marked ? Math.round((row.present / row.marked) * 100) : null })).sort((a, b) => String(a.label).localeCompare(String(b.label), "pt-BR"));
+  return { month, mode, start, end, classes, classReports, teacherReports, territoryReports, individualRows, totalMarked, totalPresent, totalJustified, sessions, rate: totalMarked ? Math.round((totalPresent / totalMarked) * 100) : 0, generatedAt: new Date() };
+}
+
+function renderReport() {
+  const report = state.report;
+  if (!report) return;
+  ui["report-empty"].classList.add("hidden");
+  ui["report-content"].classList.remove("hidden");
+  const period = report.mode === "week" ? `Semana ${report.month.slice(6)} de ${report.month.slice(0,4)} (${report.start} a ${report.end})` : formatMonth(report.month);
+  const participantCount = report.individualRows.length;
+  const classSummary = report.classReports.map((row) => `
+    <div class="class-report-row"><div><strong>${escapeHtml(row.classItem.name || "Turma")}</strong><small>${row.attendance.length} chamada${row.attendance.length === 1 ? "" : "s"} · ${row.marked} marcação${row.marked === 1 ? "" : "ões"} · ${row.justified} justificada${row.justified === 1 ? "" : "s"}</small></div><span>${row.rate === null ? "—" : `${row.rate}%`}</span><div class="progress-track"><i style="width:${row.rate || 0}%"></i></div></div>`).join("") || `<p>Nenhuma turma com dados no período.</p>`;
+  const individual = report.individualRows.length ? report.individualRows.map((row) => {
+    const trendClass = row.trend.value > 0 ? "trend-positive" : row.trend.value < 0 ? "trend-negative" : "trend-neutral";
+    return `<tr><td>${escapeHtml(row.student.preferredName || row.student.fullName || "Registro sem cadastro")}</td><td>${escapeHtml(row.className)}</td><td>${row.present}</td><td>${row.justified}</td><td>${row.absent}</td><td><strong>${row.rate}%</strong></td><td class="${trendClass}">${escapeHtml(row.trend.label)}</td></tr>`;
+  }).join("") : `<tr><td colspan="7">Nenhuma presença ou falta marcada neste período.</td></tr>`;
+  const teachers = report.teacherReports.map((row) => `<div class="teacher-report-row"><div><strong>${escapeHtml(row.name)}</strong><small>${row.classes} turma${row.classes === 1 ? "" : "s"} · ${row.sessions} chamada${row.sessions === 1 ? "" : "s"} · ${row.justified} justificada${row.justified === 1 ? "" : "s"}</small></div><span>${row.rate === null ? "—" : `${row.rate}%`}</span></div>`).join("") || "<p>Nenhum responsável encontrado no escopo.</p>";
+  const territory = report.territoryReports.map((row) => `<div class="territory-report-row"><div><strong>${escapeHtml(row.label)}</strong><small>${escapeHtml(row.sector || "Setor não informado")} · ${row.students} alunos com marcações · ${row.justified} justificadas</small></div><span>${row.rate === null ? "—" : `${row.rate}%`}</span><div class="progress-track"><i style="width:${row.rate || 0}%"></i></div></div>`).join("") || "<p>O painel territorial mostra somente zonas com pelo menos 5 alunos com marcações no período.</p>";
+  ui["report-content"].innerHTML = `
+    <section class="report-header"><div><p class="eyebrow">RELATÓRIO DE PRESENÇA</p><h3>${escapeHtml(period)}</h3><p>${report.classes.length} turma${report.classes.length === 1 ? "" : "s"} no escopo · acesso ${state.isAdmin ? "administrativo" : "do professor"}</p></div><p class="report-generated">Gerado em ${formatDateTime(report.generatedAt)}<br/>Votorantim · Rede Esportiva</p></section>
+    <section class="report-stat-grid"><article class="report-stat"><span>Presença geral</span><strong>${report.totalMarked ? `${report.rate}%` : "—"}</strong></article><article class="report-stat"><span>Presenças</span><strong>${report.totalPresent}</strong></article><article class="report-stat"><span>Justificadas</span><strong>${report.totalJustified}</strong></article><article class="report-stat"><span>Faltas</span><strong>${report.totalMarked - report.totalPresent - report.totalJustified}</strong></article><article class="report-stat"><span>Chamadas</span><strong>${report.sessions}</strong></article></section>
+    <section class="report-grid"><article class="panel"><h3>Visão por turma</h3><p>Percentual calculado sobre marcações P, J e F efetivamente salvas; somente P conta como presença.</p><div class="class-report-list">${classSummary}</div></article><article class="panel"><h3>Evolução individual</h3><p>${participantCount ? "Tendência compara as metades do mês quando há registros suficientes." : "Os indicadores individuais aparecerão após as chamadas."}</p><div class="individual-report-wrap"><table class="individual-report"><thead><tr><th>Aluno</th><th>Turma</th><th>P</th><th>J</th><th>F</th><th>Presença</th><th>Tendência</th></tr></thead><tbody>${individual}</tbody></table></div></article></section><section class="report-grid"><article class="panel teacher-report"><h3>Visão por professor</h3><p>Consolidado das turmas incluídas neste relatório. Para um professor, este bloco confirma o próprio escopo.</p><div class="teacher-report-list">${teachers}</div></article><article class="panel territory-report"><h3>Frequência por zona</h3><p>Resumo agregado, sem endereços e com mínimo de 5 alunos com marcações.</p><div class="territory-report-list">${territory}</div></article></section>`;
+}
+
+function exportReportCsv() {
+  const report = state.report;
+  if (!report) { toast("Gere um relatório antes de exportar.", "error"); return; }
+  const lines = [
+    ["periodo", "professor", "turma", "aluno", "zona_territorial", "setor_territorial", "presencas", "faltas_justificadas", "faltas", "marcacoes", "percentual_presenca", "tendencia"],
+    ...report.individualRows.map((row) => [report.month, row.teacherName, row.className, row.student.preferredName || row.student.fullName || "", row.student.territoryZoneName || row.student.geo?.zoneLabel || "", row.student.territorySector || row.student.geo?.sector || "", row.present, row.justified, row.absent, row.marked, `${row.rate}%`, row.trend.label])
+  ];
+  const csv = "\uFEFF" + lines.map((line) => line.map(csvCell).join(";")).join("\n");
+  downloadBlob(csv, `relatorio-presenca-${report.mode || "mes"}-${report.month}.csv`, "text/csv;charset=utf-8");
+  toast("CSV preparado para download.");
+}
+
+function renderModalities() {
+  if (!ui["modalities-content"]) return;
+  const groups = new Map();
+  const centers = new Set();
+  const q = String(ui["modalities-filter"]?.value || "").trim().toLocaleLowerCase("pt-BR");
+  state.classes.forEach((item) => {
+    const sport = item.sport || "Modalidade não informada";
+    const loc = item.location || "Núcleo sem nome";
+    centers.add(loc);
+    if (!groups.has(sport)) groups.set(sport, []);
+    groups.get(sport).push(item);
+  });
+  const sorted = [...groups].sort((a,b) => a[0].localeCompare(b[0], "pt-BR"));
+  const filtered = sorted.filter(([sport, rows]) => !q || [sport,...rows.map(r=>r.location),...rows.map(r=>r.name)].join(" ").toLocaleLowerCase("pt-BR").includes(q));
+  const stats = [["Modalidades", sorted.length],["Núcleos distintos", centers.size],["Turmas", state.classes.length]];
+  ui["modalities-stats"].innerHTML = stats.map(([name, val]) => `<article class="panel stat-card"><div class="stat-label"><span>${escapeHtml(name)}</span><i class="stat-icon">◆</i></div><strong>${val}</strong><small>registros disponíveis ao seu perfil</small></article>`).join("");
+  ui["modalities-content"].innerHTML = filtered.length ? filtered.map(([name, rows]) => {
+    const places = new Set(rows.map(r=>r.location).filter(Boolean));
+    return `<article class="modality-card"><div class="modality-heading"><h4>${escapeHtml(name)}</h4><span class="pill">${rows.length} turma${rows.length === 1 ? "" : "s"} · ${places.size} núcleo${places.size === 1 ? "" : "s"}</span></div>${rows.map((item) => {
+      const zone = state.territoryZones.find(z=>z.id === item.territoryZoneId);
+      const zoneLabel = zone ? `${zone.name}${zone.sector ? ` · ${zone.sector}` : ""}` : "Setor não confirmado";
+      return `<div class="modality-row"><div><strong>${escapeHtml(item.location || "Núcleo não informado")}</strong><small>${escapeHtml(item.name || "Turma")}${item.schedule ? ` · ${escapeHtml(item.schedule)}` : ""}</small><small>${escapeHtml(zoneLabel)}</small></div><button class="button button-secondary button-compact" type="button" data-action="open-attendance" data-id="${escapeAttr(item.id)}">Chamada</button></div>`;
+    }).join("")}</article>`;
+  }).join("") : `<div class="empty-state">Nenhuma modalidade encontrada para o filtro escolhido.</div>`;
+}
+
+function renderOccurrences() {
+  if (!ui["occurrence-list"]) return;
+  const rows = state.occurrences.filter((item) => state.occurrenceFilterClass === "all" || item.classId === state.occurrenceFilterClass);
+  ui["occurrence-list"].innerHTML = rows.length ? rows.map((item) => `<article class="occurrence-card"><header><div><strong>${escapeHtml(item.className || "Turma")}</strong><div class="occurrence-meta">${formatDate(item.date)}${item.time ? ` às ${escapeHtml(item.time)}` : ""} · ${escapeHtml(item.teacherName || "Professor")}${item.studentName ? ` · ${escapeHtml(item.studentName)}` : ""}</div></div><span class="occurrence-type">${escapeHtml(item.type || "Ocorrência")}</span></header><p>${escapeHtml(item.description || "")}</p></article>`).join("") : `<div class="empty-state"><span aria-hidden="true">⚑</span><h3>Nenhuma ocorrência registrada</h3><p>Use o formulário ao lado para registrar fatos relevantes da rotina.</p></div>`;
+}
+
+async function saveOccurrence(event) {
+  event.preventDefault();
+  const form = event.currentTarget;
+  const values = formValues(form);
+  if (!values.classId || !values.date || !values.time || !values.description) {
+    setFormMessage("occurrence-form-message", "Preencha turma, data, horário e descrição.");
+    return;
+  }
+  const classItem = state.classes.find((item) => item.id === values.classId);
+  const student = values.studentId ? findStudent(values.classId, values.studentId) : null;
+  const payload = {
+    classId: values.classId,
+    className: classItem?.name || "",
+    teacherId: classItem?.teacherId || state.user.uid,
+    teacherName: classItem?.teacherName || state.profile?.displayName || state.user.displayName || "",
+    studentId: values.studentId || "",
+    studentName: student?.preferredName || student?.fullName || "",
+    date: values.date,
+    time: values.time,
+    type: values.type || "Outro",
+    description: String(values.description || "").trim()
+  };
+  if (!payload.description) { setFormMessage("occurrence-form-message", "Descreva a ocorrência."); return; }
+  setFormMessage("occurrence-form-message", "Salvando…", true);
+  try {
+    await repository.saveOccurrence(payload);
+    form.reset();
+    if (ui["occurrence-date"]) ui["occurrence-date"].value = localDate();
+    if (ui["occurrence-time"]) ui["occurrence-time"].value = localTime();
+    if (ui["occurrence-class"] && state.selectedClassId) ui["occurrence-class"].value = state.selectedClassId;
+    syncOccurrenceStudents();
+    setFormMessage("occurrence-form-message", "");
+    toast("Ocorrência registrada.");
+  } catch (error) {
+    setFormMessage("occurrence-form-message", friendlyFirebaseError(error));
+  }
+}
+
+function renderTerritoryLinks() {
+  if (!ui["territory-links"]) return;
+  const visibleZones = filteredTerritoryZones(state.territoryZones);
+  const list = visibleZones.map((zone) => {
+    const classes = classesForTerritoryZone(zone);
+    return `<article class="territory-link-card"><strong>${escapeHtml(zone.name || "Bairro")}</strong><small>${escapeHtml(zone.sector || "Setor não informado")}</small>${classes.length ? `<ul>${classes.map((item) => `<li><strong>${escapeHtml(item.location || item.name || "Núcleo")}</strong> — ${escapeHtml([item.sport, item.schedule].filter(Boolean).join(" · ") || "Sem detalhes")}</li>`).join("")}</ul>` : `<p>Nenhum núcleo vinculado a este bairro.</p>`}</article>`;
+  }).join("");
+  ui["territory-links"].innerHTML = list || `<div class="empty-state"><span aria-hidden="true">⌖</span><h3>Sem vínculos territoriais</h3><p>Associe as turmas a uma zona aprovada para listar bairros e núcleos.</p></div>`;
+}
+
+function renderAdmin() {
+  if (!state.isAdmin || !ui["admin-content"]) return;
+  const teachers = state.users.length ? state.users : state.classes.map((item) => ({ id: item.teacherId, displayName: item.teacherName, email: "" }));
+  const active = state.classes.filter((item) => item.active !== false).length;
+  const teacherOptions = teachers.map((item) => `<option value="${escapeAttr(item.id || "")}">${escapeHtml(item.displayName || item.email || item.id || "Professor")}</option>`).join("");
+  ui["admin-content"].innerHTML = `<div class="admin-stats"><article class="panel stat-card"><div class="stat-label"><span>Turmas no acesso</span><i class="stat-icon">◒</i></div><strong>${state.classes.length}</strong><small>todas as turmas autorizadas</small></article><article class="panel stat-card"><div class="stat-label"><span>Turmas ativas</span><i class="stat-icon">✓</i></div><strong>${active}</strong><small>disponíveis para chamada</small></article><article class="panel stat-card"><div class="stat-label"><span>Professores</span><i class="stat-icon">◉</i></div><strong>${teachers.length}</strong><small>contas identificadas</small></article></div><article class="panel admin-note"><strong>Gestão segura de acesso.</strong> Professores entram com e-mail/senha ou Google, mas somente os UIDs provisionados em <code>adminUsers</code> terão painel administrativo.</article><article class="panel" style="margin-top:16px;padding:20px;overflow:auto"><div class="panel-heading"><div><p class="eyebrow">TURMAS E RESPONSÁVEIS</p><h3>Reatribuição de turmas</h3></div><button class="button button-secondary button-compact" data-action="open-import" type="button">Abrir importação</button></div><p class="muted">Você pode associar uma turma a um professor mesmo depois que ele criar a conta.</p><table class="admin-table"><thead><tr><th>Turma</th><th>Modalidade</th><th>Professor atual</th><th>Alunos</th><th>Status</th><th>Nova associação</th></tr></thead><tbody>${state.classes.length ? state.classes.map((item) => `<tr><td>${escapeHtml(item.name || "Turma sem nome")}</td><td>${escapeHtml(item.sport || "—")}</td><td>${escapeHtml(item.teacherName || "—")}</td><td>${(state.studentsByClass[item.id] || []).length}</td><td>${item.active === false ? "Inativa" : "Ativa"}</td><td><div class="admin-assignment"><select id="teacher-select-${escapeAttr(item.id)}"><option value="">Selecione</option>${teacherOptions}</select><button class="row-action" data-action="assign-teacher" data-id="${escapeAttr(item.id)}" type="button">Salvar</button></div></td></tr>`).join("") : '<tr><td colspan="6">Nenhuma turma disponível.</td></tr>'}</tbody></table></article>`;
+  state.classes.forEach((item) => {
+    const select = document.getElementById(`teacher-select-${item.id}`);
+    if (select) select.value = item.teacherId || "";
+  });
+}
+
+function renderHelp() {
+  ui["help-accordions"].innerHTML = HELP_ARTICLES.map((item, index) => `<details class="accordion" ${index === 0 ? "open" : ""}><summary>${escapeHtml(item.title)}</summary><div class="accordion-body"><p>${escapeHtml(item.body)}</p></div></details>`).join("");
+}
+
+function handleDynamicClick(event) {
+  const actionButton = event.target.closest("[data-action]");
+  if (!actionButton) return;
+  const { action, id, classId, tab, status } = actionButton.dataset;
+  if (action === "open-class-dialog") openClassDialog();
+  if (action === "select-class") selectClass(id);
+  if (action === "edit-class") openClassDialog(id);
+  if (action === "delete-class-admin") deleteClassAsAdmin(id);
+  if (action === "open-attendance") openAttendanceFor(id);
+  if (action === "open-import") setActiveView("import");
+  if (action === "open-import-for-class") {
+    ui["import-class"].value = id;
+    setActiveView("import");
+    updateImportReadiness();
+  }
+  if (action === "open-student-dialog") openStudentDialog(classId);
+  if (action === "edit-student") openStudentDialog(classId, id);
+  if (action === "delete-student") deleteStudent(classId, id);
+  if (action === "contact-whatsapp") contactStudent(classId, id, "whatsapp");
+  if (action === "contact-call") contactStudent(classId, id, "call");
+  if (action === "select-territory-zone") {
+    state.selectedTerritoryZoneId = id === state.selectedTerritoryZoneId ? null : id;
+    renderTerritory();
+    renderTerritoryLinks();
+  }
+  if (action === "detail-tab") { state.classDetailTab = tab; renderClasses(); }
+  if (action === "set-attendance") updateAttendanceStatus(id, status);
+  if (action === "assign-teacher") assignTeacherToClass(id);
+}
+
+function handleDynamicInput(event) {
+  const noteId = event.target.dataset.attendanceNote;
+  if (noteId) {
+    const existing = state.attendance.records[noteId] || {};
+    state.attendance.records[noteId] = { ...existing, note: event.target.value };
+    state.attendance.dirty = true;
+    ui["attendance-save-state"].textContent = "Alterações não salvas";
+    ui["attendance-save-state"].classList.add("changed");
+  }
+
+  if (event.target.name === "postalCode") event.target.value = formatPostalCode(event.target.value);
+  if (["guardianPhone", "studentPhone", "phone"].includes(event.target.name)) event.target.value = formatPhone(event.target.value);
+  if (event.target.name === "territoryZoneId" && event.target.form === ui["student-form"]) syncTerritoryFields(ui["student-form"]);
+}
+
+async function updateStudentContactTarget(classId, studentId, target) {
+  const student = findStudent(classId, studentId);
+  if (!student || !["guardian", "student", "alternate"].includes(target)) return;
+  student.contactTarget = target;
+  try {
+    await repository.saveStudent({ classId, studentId, ...student, contactTarget: target });
+    renderClasses();
+  } catch (error) {
+    toast(friendlyFirebaseError(error), "error");
+  }
+}
+
+async function assignTeacherToClass(classId) {
+  const select = document.getElementById(`teacher-select-${classId}`);
+  const teacherId = select?.value || "";
+  const teacher = state.users.find((item) => item.id === teacherId);
+  if (!teacherId || !teacher) { toast("Selecione um professor.", "error"); return; }
+  try {
+    await repository.assignTeacherToClass(classId, teacherId, teacher.displayName || teacher.email || "Professor");
+    toast("Professor vinculado à turma.");
+  } catch (error) {
+    toast(friendlyFirebaseError(error), "error");
+  }
+}
+
+
+function occurrenceDemoStore() {
+  try {
+    const raw = localStorage.getItem(DEMO_STORE_KEY);
+    const data = raw ? JSON.parse(raw) : { profile: null, classes: {}, students: {}, territoryZones: {}, attendance: {}, deletionAudit: {} };
+    data.occurrences ||= {};
+    return data;
+  } catch (error) {
+    return { profile: null, classes: {}, students: {}, territoryZones: {}, attendance: {}, deletionAudit: {}, occurrences: {} };
+  }
+}
+
+repository.getDemoOccurrences = function() {
+  return Object.entries(occurrenceDemoStore().occurrences || {}).map(([id, row]) => ({ id, ...row })).sort((a, b) => `${b.date || ""}T${b.time || "00:00"}`.localeCompare(`${a.date || ""}T${a.time || "00:00"}`));
+};
+repository.saveOccurrence = async function(payload) {
+  const record = {
+    ...payload,
+    createdAt: state.isDemo ? new Date().toISOString() : serverTimestamp(),
+    updatedAt: state.isDemo ? new Date().toISOString() : serverTimestamp()
+  };
+  if (state.isDemo) {
+    const data = occurrenceDemoStore();
+    const id = createId();
+    data.occurrences[id] = record;
+    writeDemoData(data);
+    subscribeOccurrences();
+    return id;
+  }
+  const result = await addDoc(collection(firebase.db, "occurrences"), record);
+  return result.id;
+};
+repository.assignTeacherToClass = async function(classId, teacherId, teacherName) {
+  const classItem = state.classes.find((item) => item.id === classId);
+  if (!classItem) throw new Error("Turma não encontrada.");
+  if (state.isDemo) {
+    const data = demoData();
+    data.classes[classId] = { ...(data.classes[classId] || {}), teacherId, teacherName, updatedAt: new Date().toISOString() };
+    writeDemoData(data);
+    subscribeClasses();
+    return;
+  }
+  const { id, ...payload } = classItem;
+  const events = await getDocs(query(collection(firebase.db, "occurrences"), where("classId", "==", classId), limit(400)));
+  if (events.docs.length >= 400) throw new Error("Esta turma tem muitas ocorrências para reatribuir automaticamente. Solicite migração assistida.");
+  const batch = writeBatch(firebase.db);
+  events.docs.forEach((eventDoc) => batch.update(eventDoc.ref, { teacherId, teacherName, updatedAt: serverTimestamp() }));
+  batch.set(doc(firebase.db, "classes", classId), { ...payload, teacherId, teacherName, updatedAt: serverTimestamp() }, { merge: true });
+  await batch.commit();
+};
+
+function cleanAttendanceRecords(records) {
+  return Object.fromEntries(Object.entries(records)
+    .filter(([, record]) => ["P", "F", "J"].includes(record?.status))
+    .map(([id, record]) => [id, { status: record.status, note: String(record.note || "").trim() }]));
+}
+function countMarked(records = {}) { return Object.values(records).filter((record) => ["P", "F", "J"].includes(record?.status)).length; }
+function countPresent(records = {}) { return Object.values(records).filter((record) => record?.status === "P").length; }
+function countAbsent(records = {}) { return Object.values(records).filter((record) => record?.status === "F").length; }
+function countJustified(records = {}) { return Object.values(records).filter((record) => record?.status === "J").length; }
