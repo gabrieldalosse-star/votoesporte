@@ -1,0 +1,33 @@
+/* Ajustes de legibilidade e chamada compacta */
+*, *::before, *::after { box-sizing:border-box; }
+.main-content, .workspace-main, .panel, .attendance-person, .attendance-person > div { min-width:0; }
+.button, .nav-item, .pill { white-space:normal; overflow-wrap:anywhere; height:auto; }
+.class-detail-actions, .row-actions, .page-intro, .report-actions { flex-wrap:wrap; gap:8px; }
+.table-wrap { overflow-x:auto; max-width:100%; }
+.attendance-row { display:grid; grid-template-columns:minmax(180px,1fr) minmax(130px,200px) auto; gap:12px; align-items:center; padding:10px 12px; min-height:68px; }
+.attendance-person strong { white-space:normal; overflow-wrap:anywhere; line-height:1.3; }
+.attendance-person small { overflow-wrap:anywhere; }
+.attendance-note select { width:100%; min-width:0; }
+.attendance-actions { display:flex; gap:5px; }
+.attendance-status { width:44px; height:44px; min-width:44px; padding:0; }
+.censo-chart-grid { grid-template-columns:repeat(auto-fit,minmax(min(100%,280px),1fr)); }
+.report-filters { gap:14px; padding:18px; }
+@media(max-width:640px) {
+  .main-content { padding:12px; }
+  .attendance-row { grid-template-columns:minmax(0,1fr) auto; gap:8px; padding:10px 8px; }
+  .attendance-person .student-initial { display:none; }
+  .attendance-person { gap:0; }
+  .attendance-person strong { font-size:14px; }
+  .attendance-person small { font-size:10px; }
+  .attendance-actions { grid-column:2; grid-row:1; }
+  .attendance-note { grid-column:1 / -1; grid-row:2; }
+  .attendance-note select { font-size:13px; min-height:36px; padding:5px 8px; }
+  .attendance-status { width:40px; height:44px; min-width:40px; }
+  .attendance-controls, .report-filters { display:grid; grid-template-columns:1fr; }
+  .topbar { gap:8px; padding:12px; }
+  .topbar-context h1 { font-size:18px; }
+  .profile-chip #profile-name { display:none; }
+  .class-detail-header { flex-wrap:wrap; }
+  .class-detail-actions { display:flex; width:100%; }
+}
+@media print { #student-report-filters { display:none; } }

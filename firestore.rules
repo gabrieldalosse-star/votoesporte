@@ -136,7 +136,7 @@ service cloud.firestore {
     function validAttendance(data, classId, sessionId) {
       return data.keys().hasOnly([
           'date', 'sessionTime', 'classId', 'className', 'teacherId', 'teacherName', 'records',
-          'markedCount', 'presentCount', 'absentCount', 'justifiedCount', 'updatedAt'
+          'markedCount', 'presentCount', 'absentCount', 'justifiedCount', 'updatedAt', 'sessionKind', 'sessionNote'
         ]) &&
         data.keys().hasAll([
           'date', 'sessionTime', 'classId', 'className', 'teacherId', 'teacherName', 'records',
@@ -148,8 +148,11 @@ service cloud.firestore {
         data.className is string && data.className.size() <= 120 &&
         data.teacherId is string && data.teacherId == get(/databases/$(database)/documents/classes/$(classId)).data.teacherId &&
         data.teacherName is string && data.teacherName.size() <= 120 &&
-        data.records is map && data.records.size() > 0 && data.records.size() <= 300 &&
-        data.markedCount is int && data.markedCount > 0 && data.markedCount <= data.records.size() &&
+        optionalEnum(data, "sessionKind", ["", "regular", "teacher_absence", "event"]) &&
+        optionalText(data, "sessionNote", 600) &&
+        (data.markedCount > 0 || data.get("sessionKind", "regular") in ["teacher_absence", "event"]) &&
+        data.records is map && data.records.size() >= 0 && data.records.size() <= 300 &&
+        data.markedCount is int && data.markedCount >= 0 && data.markedCount <= data.records.size() &&
         data.presentCount is int && data.presentCount >= 0 && data.presentCount <= data.markedCount &&
         data.absentCount is int && data.absentCount >= 0 && data.absentCount <= data.markedCount &&
         data.justifiedCount is int && data.justifiedCount >= 0 && data.justifiedCount <= data.markedCount &&
@@ -255,6 +258,11 @@ service cloud.firestore {
       // It is therefore reserved to an administrator with an audit record.
       allow delete: if isAdmin();
 
+      match /counters/{counterId} {
+        allow read: if canAccessClass(classId);
+        allow create: if canAccessClass(classId) && counterId == "enrollment" && request.resource.data.keys().hasOnly(["value"]) && request.resource.data.value is int && request.resource.data.value > 0;
+        allow update: if canAccessClass(classId) && counterId == "enrollment" && request.resource.data.keys().hasOnly(["value"]) && request.resource.data.value is int && request.resource.data.value > resource.data.value;
+      }
       // Student records are private to the class teacher and administrators.
       match /students/{studentId} {
         allow read: if canAccessClass(classId);
@@ -266,7 +274,7 @@ service cloud.firestore {
       // Each document is one class session and its attendance information.
       match /attendance/{sessionId} {
         allow read: if canAccessClass(classId);
-        allow delete: if isAdmin();
+        allow delete: if canAccessClass(classId);
         allow create, update: if canAccessClass(classId) &&
           validAttendance(request.resource.data, classId, sessionId);
       }

@@ -12,6 +12,7 @@ import {
   signOut
 } from "https://www.gstatic.com/firebasejs/11.0.2/firebase-auth.js";
 import {
+  runTransaction,
   addDoc,
   collection,
   deleteDoc,
@@ -603,6 +604,7 @@ function selectClass(classId) {
     return;
   }
   state.selectedClassId = classId;
+  migrateEnrollments(classId).catch(e=>toast(friendlyFirebaseError(e), "error"));
   observeSelectedStudents(classId);
   loadHistory(classId);
   renderClasses();
@@ -699,6 +701,9 @@ function renderCensoAnalytics() {
   censoPlot("censo-chart-activity",byActivity,filtered.length,"Não há matrículas neste filtro.");
   censoPlot("censo-chart-age",byAge,people.length,"Não há participantes neste filtro.");
   censoPlot("censo-chart-gender",byGender,people.length,"Não há participantes neste filtro.");
+  censoPlot("censo-chart-status",censoRank(filtered,({student})=>studentIsActive(student)?"Ativa":"Inativa"),filtered.length,"Sem matrículas.");
+  censoPlot("censo-chart-classes",censoRank(filtered,({cl})=>cl.name||"Turma"),filtered.length,"Sem matrículas.");
+  censoPlot("censo-chart-pcd",censoRank(people,({student})=>student.pcdStatus||"Não informado"),people.length,"Sem cadastros.");
 }
 document.addEventListener("change",event=>{ if(event.target?.id==="censo-neighborhood-filter"){censoDashboardBairro=event.target.value;renderCensoAnalytics();} });
 
@@ -732,7 +737,7 @@ function renderClassDetail(classItem) {
   const history = state.histories[classItem.id] || [];
   const studentContent = students.length
     ? `<div class="student-table-wrap"><table class="student-table"><thead><tr><th>Aluno</th><th>Matrícula</th><th>Responsável</th><th>Território</th><th>Situação</th><th>Contato</th><th aria-label="Ações"></th></tr></thead><tbody>${students.map((student) => `
-      <tr><td><div class="student-name"><span class="student-initial">${initials(student.preferredName || student.fullName)}</span><span>${escapeHtml(student.preferredName || student.fullName || "Sem nome")}</span></div></td><td>${escapeHtml(student.enrollmentCode || "—")}</td><td>${escapeHtml(student.guardianName || "—")}</td><td>${renderTerritoryPill(student)}</td><td><span class="pill">${escapeHtml(student.enrollmentStatus || "Ativa")}</span></td><td>${renderContactActions(student, classItem.id)}</td><td><div class="row-actions"><button class="row-action" data-action="edit-student" data-id="${escapeAttr(student.id)}" data-class-id="${escapeAttr(classItem.id)}" type="button">Editar</button>${state.isAdmin ? `<button class="row-action danger" data-action="delete-student" data-id="${escapeAttr(student.id)}" data-class-id="${escapeAttr(classItem.id)}" type="button">Excluir</button>` : ""}</div></td></tr>`).join("")}</tbody></table></div>`
+      <tr><td><div class="student-name"><span class="student-initial">${initials(student.preferredName || student.fullName)}</span><span>${escapeHtml(student.preferredName || student.fullName || "Sem nome")}</span></div></td><td>${escapeHtml(student.enrollmentCode || "—")}</td><td>${escapeHtml(student.guardianName || "—")}</td><td>${renderTerritoryPill(student)}</td><td><span class="pill">${escapeHtml(student.enrollmentStatus || "Ativa")}</span></td><td>${renderContactActions(student, classItem.id)}</td><td><div class="row-actions"><button class="row-action" data-action="toggle-student" data-id="${escapeAttr(student.id)}" data-class-id="${escapeAttr(classItem.id)}" type="button">${studentIsActive(student) ? "Desativar" : "Ativar"}</button><button class="row-action" data-action="edit-student" data-id="${escapeAttr(student.id)}" data-class-id="${escapeAttr(classItem.id)}" type="button">Editar</button>${state.isAdmin ? `<button class="row-action danger" data-action="delete-student" data-id="${escapeAttr(student.id)}" data-class-id="${escapeAttr(classItem.id)}" type="button">Excluir</button>` : ""}</div></td></tr>`).join("")}</tbody></table></div>`
     : `<div class="empty-state"><span aria-hidden="true">+</span><h3>Lista vazia, por enquanto</h3><p>Cadastre um aluno por vez ou importe uma planilha CSV revisada.</p><button class="button button-secondary" data-action="open-student-dialog" data-class-id="${escapeAttr(classItem.id)}" type="button">Cadastrar aluno</button></div>`;
   const historyContent = history.length ? `<div class="history-list">${history.map((entry) => {
     const marked = Number(entry.markedCount || countMarked(entry.records));
@@ -742,7 +747,7 @@ function renderClassDetail(classItem) {
   }).join("")}</div>` : `<div class="empty-state"><span aria-hidden="true">✓</span><h3>Ainda não há histórico</h3><p>A primeira chamada salva aparecerá aqui, com data e percentual de presença.</p><button class="button button-secondary" data-action="open-attendance" data-id="${escapeAttr(classItem.id)}" type="button">Fazer chamada</button></div>`;
   const content = state.classDetailTab === "history" ? historyContent : studentContent;
   const countText = students.length ? `${students.length} aluno${students.length === 1 ? "" : "s"} carregado${students.length === 1 ? "" : "s"}` : "Sem alunos cadastrados";
-  return `<article class="panel class-detail"><div class="class-detail-header"><div><h3>${escapeHtml(classItem.name || "Turma sem nome")}</h3><p>${escapeHtml([classItem.sport, classItem.ageGroup, classItem.location, classItem.schedule].filter(Boolean).join(" · ") || "Complete os dados operacionais da turma.")}</p></div><div class="class-detail-actions"><button class="button button-ghost button-compact" data-action="edit-class" data-id="${escapeAttr(classItem.id)}" type="button">Editar turma</button>${state.isAdmin ? `<button class="button button-ghost button-compact" style="color:#b42318" data-action="delete-class-admin" data-id="${escapeAttr(classItem.id)}" type="button">Excluir turma e dados</button>` : ""}<button class="button button-primary button-compact" data-action="open-attendance" data-id="${escapeAttr(classItem.id)}" type="button">Fazer chamada</button></div></div><div class="class-detail-tabs"><button class="detail-tab ${state.classDetailTab === "students" ? "active" : ""}" data-action="detail-tab" data-tab="students" type="button">Alunos <span>(${students.length})</span></button><button class="detail-tab ${state.classDetailTab === "history" ? "active" : ""}" data-action="detail-tab" data-tab="history" type="button">Histórico <span>(${history.length})</span></button></div><div class="student-toolbar"><p>${state.classDetailTab === "students" ? countText : "Últimas 30 chamadas desta turma"}</p>${state.classDetailTab === "students" ? `<button class="button button-secondary button-compact" data-action="open-student-dialog" data-class-id="${escapeAttr(classItem.id)}" type="button">+ Cadastrar aluno</button>` : ""}</div>${content}</article>`;
+  return `<article class="panel class-detail"><div class="class-detail-header"><div><h3>${escapeHtml(classItem.name || "Turma sem nome")}</h3><p>${escapeHtml([classItem.sport, classItem.ageGroup, classItem.location, classItem.schedule].filter(Boolean).join(" · ") || "Complete os dados operacionais da turma.")}</p></div><div class="class-detail-actions"><button class="button button-secondary button-compact" data-action="toggle-class" data-id="${escapeAttr(classItem.id)}" type="button">${classItem.active === false ? "Ativar turma" : "Desativar turma"}</button><button class="button button-secondary button-compact" data-action="number-students" data-id="${escapeAttr(classItem.id)}" type="button">Gerar matrículas pendentes</button><button class="button button-ghost button-compact" data-action="edit-class" data-id="${escapeAttr(classItem.id)}" type="button">Editar turma</button>${state.isAdmin ? `<button class="button button-ghost button-compact" style="color:#b42318" data-action="delete-class-admin" data-id="${escapeAttr(classItem.id)}" type="button">Excluir turma e dados</button>` : ""}<button class="button button-primary button-compact" data-action="open-attendance" data-id="${escapeAttr(classItem.id)}" type="button">Fazer chamada</button></div></div><div class="class-detail-tabs"><button class="detail-tab ${state.classDetailTab === "students" ? "active" : ""}" data-action="detail-tab" data-tab="students" type="button">Alunos <span>(${students.length})</span></button><button class="detail-tab ${state.classDetailTab === "history" ? "active" : ""}" data-action="detail-tab" data-tab="history" type="button">Histórico <span>(${history.length})</span></button></div><div class="student-toolbar"><p>${state.classDetailTab === "students" ? countText : "Últimas 30 chamadas desta turma"}</p>${state.classDetailTab === "students" ? `<button class="button button-secondary button-compact" data-action="open-student-dialog" data-class-id="${escapeAttr(classItem.id)}" type="button">+ Cadastrar aluno</button>` : ""}</div>${content}</article>`;
 }
 
 async function ensureAttendanceReady() {
@@ -783,7 +788,7 @@ async function loadAttendance() {
       const snapshot = await getDoc(doc(firebase.db, "classes", classId, "attendance", date));
       entry = snapshot.exists() ? { id: snapshot.id, ...snapshot.data() } : null;
     }
-    state.attendance = { classId, date, sessionTime: entry?.sessionTime || state.attendance.sessionTime || localTime(), records: structuredClone(entry?.records || {}), dirty: false };
+    state.attendance = { sessionKind: entry?.sessionKind || "regular", sessionNote: entry?.sessionNote || "", classId, date, sessionTime: entry?.sessionTime || state.attendance.sessionTime || localTime(), records: structuredClone(entry?.records || {}), dirty: false };
     renderAttendance();
   } catch (error) {
     toast(friendlyFirebaseError(error), "error");
@@ -1100,6 +1105,7 @@ function contactStudent(classId, studentId, channel) {
 
 async function generateReport() {
   const mode = ui["report-period-type"]?.value || "month";
+  if (mode === "students") { try { await generateStudentReport(); } catch(e) { toast(friendlyFirebaseError(e), "error"); } return; }
   const month = mode === "week" ? ui["report-week"]?.value : ui["report-month"].value;
   const classId = ui["report-class"].value;
   if (!month) {
@@ -1409,10 +1415,12 @@ const repository = {
       data.students[classId][id] = { ...(data.students[classId][id] || {}), ...payload, createdAt: data.students[classId][id]?.createdAt || new Date().toISOString() };
       writeDemoData(data);
       if (state.selectedClassId === classId) observeSelectedStudents(classId); else state.studentsByClass[classId] = this.getDemoStudents(classId);
+      await assignEnrollmentCode(classId,id);
       return id;
     }
     const ref = studentId ? doc(firebase.db, "classes", classId, "students", studentId) : doc(collection(firebase.db, "classes", classId, "students"));
     await setDoc(ref, { ...payload, ...(studentId ? {} : { createdAt: serverTimestamp() }) }, { merge: Boolean(studentId) });
+    await assignEnrollmentCode(classId,ref.id);
     return ref.id;
   },
   async deleteClassAsAdmin(classId) {
@@ -1519,6 +1527,7 @@ const repository = {
         data.students[classId][id] = { ...(data.students[classId][id] || {}), ...buildStudentPayload(row, new Date().toISOString()), createdAt: data.students[classId][id]?.createdAt || new Date().toISOString() };
       });
       writeDemoData(data);
+      for (const s of this.getDemoStudents(classId).filter(s=>!s.enrollmentCode)) await assignEnrollmentCode(classId,s.id);
       if (state.selectedClassId === classId) observeSelectedStudents(classId);
       return;
     }
@@ -1529,6 +1538,8 @@ const repository = {
       batch.set(doc(firebase.db, "classes", classId, "students", id), { ...buildStudentPayload(row, serverTimestamp()), createdAt: serverTimestamp() }, { merge: true });
     });
     await batch.commit();
+    const imported = await loadStudents(classId);
+    for (const s of imported.filter(s=>!s.enrollmentCode)) await assignEnrollmentCode(classId,s.id);
   }
 };
 
@@ -1715,6 +1726,8 @@ function normalizeCsvRows(rows) {
       const pcd = normalizeHeader(normalized.pcdStatus);
       normalized.pcdStatus = ["sim", "s"].includes(pcd) ? "Sim" : ["nao", "n"].includes(pcd) ? "Não" : "";
     }
+    if (/^f$/i.test(normalized.gender || "")) normalized.gender = "Feminino";
+    if (/^m$/i.test(normalized.gender || "")) normalized.gender = "Masculino";
     normalized.postalCode = formatPostalCode(normalized.postalCode || "");
     normalized.birthDate = normalizeImportDate(normalized.birthDate || "");
     normalized.registrationDate = normalizeImportDate(normalized.registrationDate || "");
@@ -2427,8 +2440,10 @@ function renderContactActions(student, classId) {
 }
 
 function renderAttendance() {
+  ui["session-kind"].value = state.attendance.sessionKind || "regular";
+  ui["session-note"].value = state.attendance.sessionNote || "";
   const classId = state.attendance.classId || state.selectedClassId || state.classes[0]?.id || "";
-  const students = state.studentsByClass[classId] || [];
+  const students = (state.studentsByClass[classId] || []).filter(s => studentIsActive(s) || Boolean(state.attendance.records?.[s.id]?.status));
   const records = state.attendance.records || {};
   const marked = countMarked(records);
   ui["attendance-date"].value = state.attendance.date || localDate();
@@ -2438,7 +2453,7 @@ function renderAttendance() {
   ui["attendance-progress"].style.width = students.length ? `${Math.round((marked / students.length) * 100)}%` : "0%";
   ui["attendance-save-state"].textContent = state.attendance.dirty ? "Alterações não salvas" : "Sem alterações";
   ui["attendance-save-state"].classList.toggle("changed", state.attendance.dirty);
-  ui["save-attendance"].disabled = !classId || !students.length;
+  ui["save-attendance"].disabled = !classId || state.classes.find(c=>c.id===classId)?.active === false;
   ui["clear-attendance"].disabled = !marked;
   if (!state.classes.length) {
     ui["attendance-helper"].textContent = "Cadastre uma turma antes de fazer a chamada.";
@@ -2459,7 +2474,7 @@ function renderAttendance() {
     const status = record.status || "";
     const rowClass = status === "P" ? "has-present" : status === "F" ? "has-absent" : status === "J" ? "has-justified" : "";
     const context = [student.enrollmentCode || "Sem código de matrícula", student.territoryZoneName || student.geo?.zoneLabel].filter(Boolean).join(" · ");
-    return `<div class="attendance-row ${rowClass}"><div class="attendance-person"><span class="student-initial">${initials(student.preferredName || student.fullName)}</span><div><strong>${escapeHtml(student.preferredName || student.fullName || "Sem nome")}</strong><small>${escapeHtml(context)}</small></div></div><div class="attendance-note"><input data-attendance-note="${escapeAttr(student.id)}" value="${escapeAttr(record.note || "")}" maxlength="160" placeholder="${status === "J" ? "Justificativa obrigatória" : "Observação opcional"}" aria-label="Nota para ${escapeAttr(student.preferredName || student.fullName || "aluno")}" /></div><div class="attendance-actions"><button class="attendance-status present ${status === "P" ? "active" : ""}" data-action="set-attendance" data-id="${escapeAttr(student.id)}" data-status="P" type="button" aria-pressed="${status === "P"}">P</button><button class="attendance-status justified ${status === "J" ? "active" : ""}" data-action="set-attendance" data-id="${escapeAttr(student.id)}" data-status="J" type="button" aria-pressed="${status === "J"}">J</button><button class="attendance-status absent ${status === "F" ? "active" : ""}" data-action="set-attendance" data-id="${escapeAttr(student.id)}" data-status="F" type="button" aria-pressed="${status === "F"}">F</button></div></div>`;
+    return `<div class="attendance-row ${rowClass}"><div class="attendance-person"><span class="student-initial">${initials(student.preferredName || student.fullName)}</span><div><strong>${escapeHtml(student.preferredName || student.fullName || "Sem nome")}</strong><small>${escapeHtml(context)}</small></div></div><div class="attendance-note">${renderJustificationSelect(student, record)}</div><div class="attendance-actions"><button class="attendance-status present ${status === "P" ? "active" : ""}" data-action="set-attendance" data-id="${escapeAttr(student.id)}" data-status="P" type="button" aria-pressed="${status === "P"}">P</button><button class="attendance-status justified ${status === "J" ? "active" : ""}" data-action="set-attendance" data-id="${escapeAttr(student.id)}" data-status="J" type="button" aria-pressed="${status === "J"}">J</button><button class="attendance-status absent ${status === "F" ? "active" : ""}" data-action="set-attendance" data-id="${escapeAttr(student.id)}" data-status="F" type="button" aria-pressed="${status === "F"}">F</button></div></div>`;
   }).join("")}` : `<div class="empty-state"><span aria-hidden="true">+</span><h3>Inclua alunos nesta turma</h3><p>Sem alunos não é possível registrar uma chamada.</p><button class="button button-secondary" data-action="open-student-dialog" data-class-id="${escapeAttr(classId)}" type="button">Cadastrar aluno</button></div>`;
 }
 
@@ -2475,7 +2490,7 @@ function updateAttendanceStatus(studentId, status) {
 }
 
 function markAllPresent() {
-  const students = state.studentsByClass[state.attendance.classId] || [];
+  const students = (state.studentsByClass[state.attendance.classId] || []).filter(studentIsActive);
   students.forEach((student) => {
     state.attendance.records[student.id] = { ...(state.attendance.records[student.id] || {}), status: "P" };
   });
@@ -2493,18 +2508,13 @@ async function saveAttendance() {
   const { classId, date, sessionTime } = state.attendance;
   const classItem = state.classes.find((item) => item.id === classId);
   const students = state.studentsByClass[classId] || [];
-  if (!classItem || !students.length) return;
+  if (!classItem || classItem.active === false) { toast("Ative a turma antes de registrar frequência.", "error"); return; }
   const marked = countMarked(state.attendance.records);
-  if (!marked) {
+  if (!marked && (!state.attendance.sessionKind || state.attendance.sessionKind === "regular")) {
     toast("Marque ao menos uma presença, justificativa ou falta antes de salvar.", "error");
     return;
   }
-  const justifiedWithoutNote = Object.values(state.attendance.records).some((record) => record?.status === "J" && !String(record.note || "").trim());
-  if (justifiedWithoutNote) {
-    toast("Toda falta justificada precisa de uma descrição.", "error");
-    return;
-  }
-  const records = cleanAttendanceRecords(state.attendance.records);
+  const records = state.attendance.sessionKind && state.attendance.sessionKind !== "regular" ? {} : cleanAttendanceRecords(state.attendance.records);
   const entry = {
     date,
     sessionTime: sessionTime || localTime(),
@@ -2513,6 +2523,8 @@ async function saveAttendance() {
     teacherId: classItem.teacherId || state.user.uid,
     teacherName: classItem.teacherName || state.profile?.displayName || state.user.displayName || "",
     records,
+    sessionKind: state.attendance.sessionKind || "regular",
+    sessionNote: state.attendance.sessionNote || "",
     markedCount: countMarked(records),
     presentCount: countPresent(records),
     absentCount: countAbsent(records),
@@ -2638,6 +2650,7 @@ function renderReport() {
 }
 
 function exportReportCsv() {
+  if (state.report?.mode === "students") { downloadBlob("\ufeff"+state.report.csv.map(r=>r.map(csvCell).join(";")).join("\r\n"), "relatorio-alunos.csv", "text/csv;charset=utf-8"); return; }
   const report = state.report;
   if (!report) { toast("Gere um relatório antes de exportar.", "error"); return; }
   const lines = [
@@ -2749,6 +2762,7 @@ function handleDynamicClick(event) {
   const actionButton = event.target.closest("[data-action]");
   if (!actionButton) return;
   const { action, id, classId, tab, status } = actionButton.dataset;
+  if (["toggle-student", "toggle-class", "number-students", "delete-attendance", "load-student-filters"].includes(action)) { runManagementAction(action, classId || id, id).catch(e=>toast(friendlyFirebaseError(e), "error")); return; }
   if (action === "open-class-dialog") openClassDialog();
   if (action === "select-class") selectClass(id);
   if (action === "edit-class") openClassDialog(id);
@@ -2776,6 +2790,7 @@ function handleDynamicClick(event) {
 }
 
 function handleDynamicInput(event) {
+  if (event.target.id === "session-kind" || event.target.id === "session-note") { state.attendance[event.target.id === "session-kind" ? "sessionKind" : "sessionNote"] = event.target.value; state.attendance.dirty = true; ui["attendance-save-state"].textContent = "Alterações não salvas"; }
   const noteId = event.target.dataset.attendanceNote;
   if (noteId) {
     const existing = state.attendance.records[noteId] || {};
@@ -2875,3 +2890,96 @@ function countMarked(records = {}) { return Object.values(records).filter((recor
 function countPresent(records = {}) { return Object.values(records).filter((record) => record?.status === "P").length; }
 function countAbsent(records = {}) { return Object.values(records).filter((record) => record?.status === "F").length; }
 function countJustified(records = {}) { return Object.values(records).filter((record) => record?.status === "J").length; }
+
+function studentIsActive(student) { return !["inativa", "inativo", "desativado", "cancelada"].includes(censoKey(student.enrollmentStatus || "Ativa")); }
+function renderJustificationSelect(student, record) {
+  const values = [...new Set(["Atestado", "Mau-estar", "Viagem", "Outros", record.note].filter(Boolean))];
+  return '<select data-attendance-note="'+escapeAttr(student.id)+'" aria-label="Justificativa de '+escapeAttr(student.fullName)+'"><option value="">Sem justificativa</option>'+values.map(v=>'<option '+(record.note===v?'selected':'')+'>'+escapeHtml(v)+'</option>').join("")+'</select>';
+}
+async function assignEnrollmentCode(classId, studentId) {
+  const rows = state.isDemo ? repository.getDemoStudents(classId) : (await getDocs(collection(firebase.db, "classes", classId, "students"))).docs.map(d=>({id:d.id,...d.data()}));
+  const highest = rows.reduce((max,s)=>Math.max(max, /^MAT-\d+$/.test(s.enrollmentCode||"") ? Number(s.enrollmentCode.slice(4)) : 0),0);
+  if (state.isDemo) {
+    const data = demoData(), student = data.students[classId][studentId];
+    if (!student.enrollmentCode) {
+      data.enrollmentCounters ||= {};
+      data.enrollmentCounters[classId] = Math.max(highest, data.enrollmentCounters[classId]||0)+1;
+      student.enrollmentCode = "MAT-"+String(data.enrollmentCounters[classId]).padStart(6,"0");
+      writeDemoData(data);
+    }
+    return;
+  }
+  const ref = doc(firebase.db,"classes",classId,"students",studentId);
+  const counter = doc(firebase.db,"classes",classId,"counters","enrollment");
+  await runTransaction(firebase.db, async tx=>{
+    const current = await tx.get(ref), count = await tx.get(counter);
+    if (!current.exists() || current.data().enrollmentCode) return;
+    const next = Math.max(highest, count.data()?.value||0)+1;
+    tx.set(counter,{value:next});
+    tx.update(ref,{enrollmentCode:"MAT-"+String(next).padStart(6,"0"),updatedAt:serverTimestamp()});
+  });
+}
+async function runManagementAction(action,classId,id) {
+  if (action === "load-student-filters") { await loadStudentFilterOptions(); toast("Filtros atualizados."); return; }
+  if (action === "delete-attendance") {
+    const target = state.attendance;
+    if (!target.classId || !confirm("Excluir a frequência de "+formatDate(target.date)+"?")) return;
+    if (state.isDemo) { const data=demoData(); delete data.attendance[target.classId]?.[target.date]; writeDemoData(data); }
+    else await deleteDoc(doc(firebase.db,"classes",target.classId,"attendance",target.date));
+    await loadAttendance(); await loadHistory(target.classId); syncMonthlyAttendance(); state.report=null;
+    ui["report-content"].classList.add("hidden"); ui["report-empty"].classList.remove("hidden");
+    renderClasses(); renderDashboard(); toast("Frequência excluída."); return;
+  }
+  if (action === "number-students") {
+    const rows = await loadStudents(classId);
+    for (const s of rows.filter(s=>!s.enrollmentCode)) await assignEnrollmentCode(classId,s.id);
+    await loadStudents(classId); renderClasses(); toast("Matrículas geradas. Novos cadastros seguem a sequência."); return;
+  }
+  const isStudent = action === "toggle-student";
+  const item = isStudent ? findStudent(classId,id) : state.classes.find(c=>c.id===classId);
+  if (!item) return;
+  const patch = isStudent ? {enrollmentStatus:studentIsActive(item)?"Inativa":"Ativa"} : {active:item.active===false};
+  if (state.isDemo) {
+    const data=demoData(); Object.assign(isStudent ? data.students[classId][id] : data.classes[classId],patch); writeDemoData(data);
+    Object.assign(item,patch);
+  } else await setDoc(isStudent ? doc(firebase.db,"classes",classId,"students",id) : doc(firebase.db,"classes",classId),{...patch,updatedAt:serverTimestamp()},{merge:true});
+  Object.assign(item,patch); renderClasses(); renderAttendance(); renderDashboard();
+}
+async function loadStudentFilterOptions() {
+  await Promise.all(state.classes.map(c=>loadStudents(c.id)));
+  const all=state.classes.flatMap(cl=>(state.studentsByClass[cl.id]||[]).map(student=>({student,cl})));
+  for (const [field,selector] of [["neighborhood",r=>r.student.neighborhood],["gender",r=>r.student.gender],["sport",r=>r.cl.sport]]) {
+    const select=ui["students-"+field], prior=select.value;
+    select.replaceChildren(new Option("Todos",""));
+    [...new Set(all.map(selector).filter(Boolean))].sort((a,b)=>a.localeCompare(b,"pt-BR")).forEach(v=>select.add(new Option(v,v)));
+    select.value=prior;
+  }
+  return all;
+}
+async function generateStudentReport() {
+  const all=await loadStudentFilterOptions();
+  const min=ui["students-min-age"].value, max=ui["students-max-age"].value;
+  if (min!=="" && max!=="" && Number(min)>Number(max)) throw new Error("Idade mínima maior que máxima.");
+  const selectedClass=ui["report-class"].value, group=ui["students-group"].value;
+  const rows=all.filter(({student:s,cl})=>{
+    const age=censoAge(s);
+    return (selectedClass==="all"||cl.id===selectedClass) &&
+      (!ui["students-neighborhood"].value||s.neighborhood===ui["students-neighborhood"].value) &&
+      (!ui["students-gender"].value||s.gender===ui["students-gender"].value) &&
+      (!ui["students-sport"].value||cl.sport===ui["students-sport"].value) &&
+      (!ui["students-status"].value||(studentIsActive(s)?"Ativa":"Inativa")===ui["students-status"].value) &&
+      (min===""||(age!==null&&age>=Number(min))) && (max===""||(age!==null&&age<=Number(max)));
+  });
+  const groups=censoRank(rows,({student:s,cl})=>String(group==="sport"?cl.sport:group==="age"?(censoAge(s)??"Não informada"):s[group]||"Não informado"));
+  const csv=[["Matrícula","Aluno","Turma","Bairro","Gênero","Modalidade","Idade","Situação"],...rows.map(({student:s,cl})=>[s.enrollmentCode||"",s.fullName,cl.name,s.neighborhood||"",s.gender||"",cl.sport,censoAge(s)??"",studentIsActive(s)?"Ativa":"Inativa"])];
+  state.report={mode:"students",csv};
+  ui["report-empty"].classList.add("hidden"); ui["report-content"].classList.remove("hidden");
+  ui["report-content"].innerHTML='<article class="panel" style="padding:20px"><h2>Cadastro de alunos</h2><p>'+censoUnique(rows).length+' pessoas estimadas · '+rows.length+' matrículas. Pessoas estimadas por nome e nascimento.</p><div id="student-report-chart" class="censo-bars"></div><div class="table-wrap"><table><thead><tr>'+csv[0].map(v=>'<th>'+escapeHtml(v)+'</th>').join("")+'</tr></thead><tbody>'+csv.slice(1).map(r=>'<tr>'+r.map(v=>'<td>'+escapeHtml(v)+'</td>').join("")+'</tr>').join("")+'</tbody></table></div></article>';
+  censoPlot("student-report-chart",groups,rows.length,"Nenhum aluno nos filtros.");
+}
+
+const enrollmentMigrations = new Set();
+async function migrateEnrollments(classId) {
+ if (enrollmentMigrations.has(classId)) return; enrollmentMigrations.add(classId);
+ try { const rows=await loadStudents(classId); for (const s of rows.filter(s=>!s.enrollmentCode)) await assignEnrollmentCode(classId,s.id); await loadStudents(classId); renderClasses(); } finally { enrollmentMigrations.delete(classId); }
+}
