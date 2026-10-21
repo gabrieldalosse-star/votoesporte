@@ -8,6 +8,7 @@ import {
   getRedirectResult,
   onAuthStateChanged,
   signInWithEmailAndPassword,
+  sendPasswordResetEmail,
   signInWithPopup,
   signInWithRedirect,
   signOut
@@ -39,7 +40,7 @@ function safeStorageSet(key, value) {
 }
 
 const DEMO_STORE_KEY = "votorantim-esporte-chamada-demo-v1";
-const APP_VERSION = "11.1.0";
+const APP_VERSION = "11.2.0";
 const FIREBASE_REQUIRED_KEYS = ["apiKey", "authDomain", "projectId", "appId"];
 const PAGE_TITLES = {
   dashboard: ["VISÃO GERAL", "Bom trabalho!"],
@@ -232,6 +233,7 @@ function showAuthScreen() {
 }
 
 async function signInWithGoogle() {
+  if (state.authBusy) return;
   if (!firebase.auth) return;
   setAuthBusy(true);
   try {
@@ -1835,9 +1837,14 @@ function friendlyFirebaseError(error) {
     "auth/popup-blocked": "O navegador bloqueou a janela de acesso. Permita pop-ups e tente novamente.",
     "auth/unauthorized-domain": "Este domínio ainda não está autorizado no Firebase Authentication.",
     "auth/network-request-failed": "Não foi possível conectar ao Firebase. Verifique sua rede.",
-    "auth/invalid-credential": "E-mail ou senha inválidos.",
+    "auth/invalid-credential": "Não foi possível entrar com este e-mail e senha. Confira os dados ou use Esqueci minha senha.",
+    "auth/wrong-password": "Não foi possível entrar com este e-mail e senha. Confira os dados ou use Esqueci minha senha.",
+    "auth/user-not-found": "Não foi possível entrar com este e-mail e senha. Confira os dados ou crie uma conta se este for seu primeiro acesso.",
     "auth/invalid-email": "Informe um e-mail válido.",
-    "auth/email-already-in-use": "Este e-mail já possui uma conta.",
+    "auth/email-already-in-use": "Este e-mail já possui uma conta. Use Entrar na plataforma com sua senha atual. Se não lembrar a senha, clique em Esqueci minha senha.",
+    "auth/user-disabled": "Esta conta foi desativada. Solicite à coordenação a revisão do acesso no Firebase Authentication.",
+    "auth/too-many-requests": "Muitas tentativas de acesso. Aguarde alguns minutos antes de tentar novamente.",
+    "auth/missing-password": "Informe sua senha para entrar.",
     "auth/weak-password": "Use uma senha mais forte.",
     "auth/operation-not-allowed": "O método de login ainda não foi ativado no Firebase Authentication.",
     "permission-denied": "Seu perfil não tem permissão para esta operação. Verifique as regras do Firestore.",
@@ -2015,11 +2022,41 @@ function renderSettings() {
 }
 
 function currentAuthEmail() { return String(ui["auth-email"]?.value || "").trim(); }
-function currentAuthPassword() { return String(ui["auth-password"]?.value || "").trim(); }
+function currentAuthPassword() { return String(ui["auth-password"]?.value || ""); }
+
+function authEmailIsValid() {
+  const field = ui['auth-email'];
+  if (!currentAuthEmail() || !field?.checkValidity()) {
+    showAuthMessage('Informe um e-mail válido.');
+    field?.reportValidity();
+    return false;
+  }
+  return true;
+}
+
+async function requestPasswordRecovery() {
+  if (state.authBusy) return;
+  if (!firebase.auth) {showAuthMessage('O serviço de acesso não iniciou. Recarregue a página e tente novamente.');return;}
+  if (!authEmailIsValid()) return;
+  const email = currentAuthEmail();
+  const message = 'Se houver uma conta com esse e-mail, você receberá as instruções para redefinir a senha. Confira também o spam.';
+  setAuthBusy(true);
+  showAuthMessage('Solicitando recuperação de senha…');
+  try {
+    firebase.auth.languageCode = 'pt-BR';
+    await sendPasswordResetEmail(firebase.auth, email);
+    showAuthMessage(message);
+  } catch(error) {
+    // Do not use recovery as an email-existence lookup.
+    showAuthMessage(error?.code === 'auth/user-not-found' ? message : friendlyFirebaseError(error));
+  } finally {setAuthBusy(false);}
+}
 
 async function signInWithEmailPassword(event) {
   event?.preventDefault?.();
-  if (!firebase.auth) return;
+  if (state.authBusy) return;
+  if (!firebase.auth) {showAuthMessage('O serviço de acesso não iniciou. Recarregue a página e tente novamente.');return;}
+  if (!authEmailIsValid()) return;
   const email = currentAuthEmail();
   const password = currentAuthPassword();
   if (!email || !password) {
@@ -2037,7 +2074,9 @@ async function signInWithEmailPassword(event) {
 }
 
 async function signUpWithEmailPassword() {
-  if (!firebase.auth) return;
+  if (state.authBusy) return;
+  if (!firebase.auth) {showAuthMessage('O serviço de acesso não iniciou. Recarregue a página e tente novamente.');return;}
+  if (!authEmailIsValid()) return;
   const email = currentAuthEmail();
   const password = currentAuthPassword();
   if (!email || !password) {
@@ -2064,6 +2103,7 @@ function wireStaticEvents() {
   ui["demo-sign-in"]?.addEventListener("click", startDemo);
   ui["email-auth-form"]?.addEventListener("submit", signInWithEmailPassword);
   ui["email-sign-up"]?.addEventListener("click", signUpWithEmailPassword);
+  ui["email-password-reset"]?.addEventListener("click", requestPasswordRecovery);
   ui["mobile-menu"]?.addEventListener("click", () => ui.sidebar.classList.toggle("open"));
   ui["profile-menu"]?.addEventListener("click", () => {
     const open = ui["profile-popover"].classList.toggle("hidden");
@@ -2169,7 +2209,7 @@ async function bootstrap() {
   const configured = isFirebaseConfigured(window.FIREBASE_CONFIG);
   if (!configured) {
     ui["firebase-setup-card"]?.classList.remove("hidden");
-    [ui["google-sign-in"],ui["email-sign-in"],ui["email-sign-up"]].forEach(button=>{if(button)button.disabled=true;});
+    [ui["google-sign-in"],ui["email-sign-in"],ui["email-sign-up"],ui["email-password-reset"]].forEach(button=>{if(button)button.disabled=true;});
     ui["demo-sign-in"]?.classList.remove("hidden");
     finishLoading();
     showAuthScreen();
@@ -2286,10 +2326,12 @@ function syncMonthlyAttendance() {
 }
 
 function setAuthBusy(busy) {
-  [ui["google-sign-in"], ui["email-sign-in"], ui["email-sign-up"]].forEach((button) => { if (button) button.disabled = busy; });
+  state.authBusy = busy;
+  [ui["google-sign-in"], ui["email-sign-in"], ui["email-sign-up"], ui["email-password-reset"]].forEach((button) => { if (button) button.disabled = busy || !firebase.auth; });
   if (ui["google-sign-in"]) ui["google-sign-in"].lastChild.textContent = busy ? "Abrindo acesso…" : "Entrar com Google (admin)";
-  if (ui["email-sign-in"]) ui["email-sign-in"].textContent = busy ? "Entrando…" : "Entrar com e-mail";
-  if (ui["email-sign-up"]) ui["email-sign-up"].textContent = busy ? "Criando…" : "Criar conta";
+  if (ui["email-sign-in"]) ui["email-sign-in"].textContent = busy ? "Aguarde…" : "Entrar na plataforma";
+  if (ui["email-sign-up"]) ui["email-sign-up"].textContent = busy ? "Aguarde…" : "Criar conta";
+  if (ui["email-password-reset"]) ui["email-password-reset"].textContent = busy ? "Aguarde…" : "Esqueci minha senha";
 }
 
 function setActiveView(view, { preserveScroll = false } = {}) {

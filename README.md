@@ -1,3 +1,7 @@
+# VotoEsporte 11.2 — Acesso e recuperação de senha
+
+Leia [a correção de acesso](docs/ACESSO-11.2.md).
+
 # VotoEsporte 11.1 — Correções de operação e dados
 
 Leia [as correções e a atualização de F/M na base](docs/CORRECOES-11.1.md).
