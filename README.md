@@ -1,3 +1,7 @@
+# VotoEsporte 12.0 — Mapas leves e análise interligada
+
+Leia [as melhorias, validação e publicação](docs/MELHORIAS-12.0.md).
+
 # VotoEsporte 11.2 — Acesso e recuperação de senha
 
 Leia [a correção de acesso](docs/ACESSO-11.2.md).

@@ -1,3 +1,5 @@
+import { ensureMapLibrary } from "./map-runtime.mjs";
+import { createInsights } from "./insights.mjs";
 import { normalizeGender, identityKey, uniquePeople, venueKey, completeVenueDirectory } from "./data-integrity.mjs";
 import { initializeApp } from "https://www.gstatic.com/firebasejs/11.0.2/firebase-app.js";
 import {
@@ -40,13 +42,14 @@ function safeStorageSet(key, value) {
 }
 
 const DEMO_STORE_KEY = "votorantim-esporte-chamada-demo-v1";
-const APP_VERSION = "11.2.0";
+const APP_VERSION = "12.0.0";
 const FIREBASE_REQUIRED_KEYS = ["apiKey", "authDomain", "projectId", "appId"];
 const PAGE_TITLES = {
   dashboard: ["VISÃO GERAL", "Bom trabalho!"],
   classes: ["ORGANIZAÇÃO", "Minhas turmas"],
   attendance: ["PRESENÇA", "Fazer chamada"],
   reports: ["ANÁLISE", "Relatórios de presença"],
+  heat: ["INTELIGÊNCIA TERRITORIAL", "Mapa de calor por CEP"],
   territory: ["CENSO+ E TERRITÓRIO", "Censo+ e território"],
   import: ["MIGRAÇÃO ASSISTIDA", "Importar alunos"],
   admin: ["GESTÃO", "Visão de coordenação"],
@@ -79,7 +82,7 @@ const HELP_ARTICLES = [
   },
   {
     title: "Como funciona o mapa de território?",
-    body: "O mapa usa somente zonas ou bairros de uma camada aprovada pela gestão. Ele não mostra casas, ruas nem pinos individuais. A zona é selecionada manualmente até que exista uma regra territorial validada."
+    body: "O mapa usa somente zonas ou bairros de uma camada aprovada pela gestão. Na aba Mapa de calor, cada pessoa contribui uma vez na posição aproximada do seu CEP. A posição não representa sua residência."
   }
 ];
 const TOUR_STEPS = [
@@ -118,6 +121,7 @@ const state = {
   territoryMap: null,
   googleTerritoryMap: null,
   censusHydrationId: 0,
+  sessionRevision: 0,
   tourIndex: 0,
   unsubscribers: { classes: null, selectedStudents: null, territoryZones: null },
   selectedStudentsSubscriptionId: null
@@ -125,7 +129,7 @@ const state = {
 
 let firebase = { app: null, auth: null, db: null, provider: null };
 
-bootstrap().catch((error) => {
+Promise.resolve().then(bootstrap).catch((error) => {
   console.error("Erro ao iniciar o aplicativo:", error);
   document.getElementById("loading-screen")?.classList.add("hidden");
   document.getElementById("auth-screen")?.classList.remove("hidden");
@@ -136,7 +140,14 @@ bootstrap().catch((error) => {
   }
 });
 
+const resourceRequests = new Map();
 async function fetchJsonResource(url, options = {}) {
+  if (resourceRequests.has(url)) return resourceRequests.get(url);
+  const pending = requestJsonResource(url, options);
+  resourceRequests.set(url, pending);
+  try { return await pending; } finally { resourceRequests.delete(url); }
+}
+async function requestJsonResource(url, options = {}) {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), 10000);
   try {
@@ -147,22 +158,19 @@ async function fetchJsonResource(url, options = {}) {
 }
 
 async function loadBundledTerritoryZones() {
-  const urls = ['data/votorantim-setores-ibge-2022.geojson', 'data/votorantim-bairros-referencia-cnefe-2022.geojson',
+  const urls = ['data/votorantim-bairros-mapa-leve.geojson',
     'data/votorantim-bairros-diretorio.json', 'data/votorantim-cep-bairros.json',
-    'data/votorantim-bairros-complementares.geojson', 'data/votorantim-polos-esportivos.json'];
+    'data/votorantim-bairros-complementares-leve.geojson', 'data/votorantim-polos-esportivos.json'];
   const results = await Promise.allSettled(urls.map(url => fetchJsonResource(url)));
-  const [sectors, neighborhoods, directory, postal, complementary, centers] = results.map(r => r.status === 'fulfilled' ? r.value : null);
+  const [neighborhoods, directory, postal, complementary, centers] = results.map(r => r.status === 'fulfilled' ? r.value : null);
   state.neighborhoodDirectory = directory || {neighborhoods: [], assignments: []};
-  state.censusTerritoryZones = (sectors?.features || []).map(f => ({id:'ibge-'+f.properties.cd_setor,
-    name:directory?.assignments?.find(a=>a.sectorCode===f.properties.cd_setor)?.neighborhood||'Localidade não identificada',
-    sectorCode:f.properties.cd_setor, sector:f.properties.situacao||'Censo 2022',
-    sourceVersion:'IBGE • Censo 2022 • malha definitiva v02', geometry:f.geometry, layer:'sectors'}));
+  state.censusTerritoryZones = [];
   state.bundledTerritoryZones = [...(neighborhoods?.features || []), ...(complementary?.features || [])]
     .map(f => ({...f.properties, geometry:f.geometry, layer:'neighborhoods'}));
   state.territoryLayer = 'neighborhoods';
   state.postalDirectory = postal?.postalCodes || {};
   state.bundledSportsCenters = centers?.centers || [];
-  state.sportsCenters = state.bundledSportsCenters.slice();
+  state.sportsCenters = state.bundledSportsCenters.map(center => ({...center,...(state.sportsCenters || []).find(existing=>existing.id===center.id)}));
   state.territoryLoadErrors = results.flatMap((r,i) => r.status === 'rejected' ? [urls[i]] : []);
   if (state.territoryLoadErrors.length) console.warn('Dados territoriais parcialmente indisponíveis', state.territoryLoadErrors);
 }
@@ -260,6 +268,23 @@ async function signOutUser() {
 
 function showAuthMessage(message) {
   ui["auth-message"].textContent = message || "";
+  if(ui['auth-error-details'])ui['auth-error-details'].hidden = true;
+  if(ui['auth-error-context'])ui['auth-error-context'].textContent = '';
+}
+
+function showAuthFailure(error, email, operation) {
+  showAuthMessage(friendlyFirebaseError(error));
+  const target = ui['auth-error-context'];
+  if (!target) return;
+  // Only show the submitted identifier and public project context. Never expose
+  // passwords, tokens, credentials or the raw provider response.
+  const project = firebase.app?.options?.projectId || window.FIREBASE_CONFIG?.projectId || 'não identificado';
+  target.textContent = `Operação: ${operation}\nE-mail enviado: ${email}\nProjeto: ${project}\nCódigo: ${error?.code || 'erro-sem-codigo'}\nVersão: ${APP_VERSION}`;
+  ui['auth-error-details'].hidden = false;
+}
+
+function clearAuthFeedback() {
+  if (!state.authBusy) showAuthMessage('');
 }
 
 function subscribeClasses() {
@@ -436,8 +461,10 @@ function renderTerritoryFilter(zones) {
 }
 
 function renderTerritory() {
-  if (!ui["territory-summary"]) return;
+  if (!ui["territory-summary"] || state.activeView !== "territory") return;
   renderSportsCenterDirectory();
+  renderNeighborhoodDirectory().catch(e=>toast(e.message,"error"));
+  ui["territory-layer-select"].value = state.territoryLayer || "neighborhoods";
   renderTerritoryLinks();
   const zones = state.territoryLayer==='sectors' ? state.censusTerritoryZones : state.territoryZones.filter(z=>!z.aliasOnly||neighborhoodKey(z.name)===neighborhoodKey(state.selectedNeighborhood));
   renderTerritoryFilter(zones);
@@ -451,7 +478,7 @@ function renderTerritory() {
   const neighborhoods = new Set(loadedStudents().map((student) => censoText(student.neighborhood)).filter(Boolean));
   const sourceLabels = [...new Set(zones.map((zone) => zone.sourceVersion).filter(Boolean))];
   ui["territory-summary"].innerHTML = [
-    [state.territoryLayer==="sectors"?"Polígonos de origem":"Áreas por bairro", zones.length, "76 agrupamentos • 215 polígonos de origem"],
+    [state.territoryLayer==="sectors"?"Polígonos de origem":"Áreas por bairro", zones.length, "Referências de bairro simplificadas para navegação"],
     ["Cadastros por zona", classified, loaded ? `de ${loaded} aluno${loaded === 1 ? "" : "s"} carregado${loaded === 1 ? "" : "s"}` : "nenhum aluno carregado"],
     ["Localidades identificadas", state.neighborhoodDirectory?.neighborhoods.length||0, "IBGE CNEFE 2022 • diretório completo"],
     ["Referência dos bairros", "CNEFE 2022", "agrupamento por localidade predominante"]
@@ -470,7 +497,7 @@ function renderTerritory() {
 }
 
 function renderTerritoryMap(zones, counts) {
-  const usingGoogle = Boolean(window.GOOGLE_MAPS_CONFIG?.apiKey);
+  const usingGoogle = false;
   return `<div id="official-territory-map" class="official-territory-map" aria-label="Mapa de bairros de referência de Votorantim"></div><p class="territory-map-credit">Bairros de referência: setores IBGE agrupados por localidade predominante no CNEFE 2022 • não são perímetros legais · Base: ${usingGoogle ? "Google Maps Platform" : "© OpenStreetMap contributors"}. Setores censitários do Censo 2022.</p>`;
 }
 
@@ -479,25 +506,17 @@ async function mountOfficialTerritoryMap(zones, counts) {
   if (!target) return;
   state.territoryMap?.remove();
   state.territoryMap = null;
+  state.sportsCenterMarkers = new Map();
+  state.googleSportsCenterMarkers = new Map();
   state.googleTerritoryMap = null;
   target.replaceChildren();
   try {
+    await ensureMapLibrary();
     const boundary = state.municipalBoundary || await fetchJsonResource("data/votorantim-limite-municipal-oficial.geojson", { cache: "force-cache" });
     state.municipalBoundary=boundary;
-    if (!target.isConnected) return;
-    if (window.GOOGLE_MAPS_CONFIG?.apiKey) {
-      try {
-        await loadGoogleMaps(window.GOOGLE_MAPS_CONFIG);
-        if (!target.isConnected) return;
-        mountGoogleTerritoryMap(target, boundary, zones, counts);
-        return;
-      } catch (error) {
-        console.warn("Google Maps indisponível; usando mapa alternativo", error);
-      }
-    }
-    if (!target.isConnected) return;
+    if (!target.isConnected || state.activeView !== "territory") return;
     if (!window.L) throw new Error("Biblioteca do mapa indisponível");
-    const map = window.L.map(target, { zoomControl: true, scrollWheelZoom: false, attributionControl: true });
+    const map = window.L.map(target, { preferCanvas: true, zoomControl: true, scrollWheelZoom: false, attributionControl: true });
     state.territoryMap = map;
     window.L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", { maxZoom: 19, attribution: "© OpenStreetMap contributors" }).addTo(map);
     const boundaryLayer = window.L.geoJSON(boundary, {
@@ -507,12 +526,13 @@ async function mountOfficialTerritoryMap(zones, counts) {
     map.fitBounds(boundaryLayer.getBounds(), { padding: [16, 16] });
     mountSportsCentersLeaflet(map);
     if(state.mapExtent!=="municipality"&&!state.selectedNeighborhood&&!state.selectedTerritoryZoneId){const centers=visibleSportsCenters();if(centers.length>1)map.fitBounds(window.L.latLngBounds(centers.map(c=>[c.latitude,c.longitude])),{padding:[38,38],maxZoom:14});}
-    zones.filter((zone) => geometryPoints(zone.geometry).length).forEach((zone) => {
+    (state.territoryLayer === "none" ? [] : zones).filter((zone) => geometryPoints(zone.geometry).length).forEach((zone) => {
       const total = counts[zone.id] || 0;
       const selected = zone.id === state.selectedTerritoryZoneId || neighborhoodKey(zone.name)===neighborhoodKey(state.selectedNeighborhood);
       const palette=['#187d88','#4267a5','#738c4e','#a27835','#8c6591','#417f71'];
       const color=palette[[...zone.name].reduce((v,c)=>v+c.charCodeAt(0),0)%palette.length];
       const layer = window.L.geoJSON({ type: "Feature", properties: {}, geometry: zone.geometry }, {
+        smoothFactor: 1.8,
         style: { color: selected ? "#9e1f2a" : color, weight: selected ? 3 : 1.4, fillColor: selected ? "#c62d37" : color, fillOpacity: selected ? 0.33 : 0.18 }
       }).addTo(map);
       layer.bindTooltip(`${zone.name || "Zona"} · ${total} cadastro${total === 1 ? "" : "s"}`, { sticky: true });
@@ -522,7 +542,7 @@ async function mountOfficialTerritoryMap(zones, counts) {
     if ((state.selectedNeighborhood || state.selectedTerritoryZoneId) && zones.length) { const focus=window.L.geoJSON({type:"FeatureCollection",features:zones.map(z=>({type:"Feature",properties:{},geometry:z.geometry}))});map.fitBounds(focus.getBounds(),{padding:[28,28],maxZoom:15}); }
   } catch (error) {
     console.error("Falha ao carregar a geometria ilustrativa", error);
-    if (!target.isConnected) return;
+    if (!target.isConnected || state.activeView !== "territory") return;
     target.innerHTML = `<div class="territory-map-empty"><span aria-hidden="true">!</span><h4>Mapa não disponível</h4><p>Verifique os dados territoriais e a conexão com a base cartográfica.</p></div>`;
   }
 }
@@ -685,12 +705,14 @@ function observeSelectedStudents(classId) {
 
 async function loadStudents(classId) {
   if (!classId) return [];
+  const sessionRevision=state.sessionRevision;
   if (state.isDemo) {
     const rows = repository.getDemoStudents(classId);
     state.studentsByClass[classId] = rows;
     return rows;
   }
   const snapshot = await getDocs(query(collection(firebase.db, "classes", classId, "students"), orderBy("fullName")));
+  if (sessionRevision !== state.sessionRevision || !state.classes.some(cl=>cl.id===classId)) return [];
   const rows = snapshot.docs.map((item) => ({ id: item.id, ...item.data() }));
   state.studentsByClass[classId] = rows;
   return rows;
@@ -716,7 +738,6 @@ async function loadHistory(classId) {
   }
 }
 
-let censoDashboardBairro = "";
 function censoText(value) { return String(value ?? "").trim(); }
 function censoKey(value) { return censoText(value).normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLocaleLowerCase("pt-BR").replace(/\s+/g, " "); }
 function censoPersonKey(student) { return String(student.globalStudentId || '').trim() || identityKey(student); }
@@ -729,34 +750,13 @@ function censoPlot(target, entries, total, empty) {
   node.innerHTML = entries.slice(0,12).map(([label,n]) => `<div class="censo-bar-row"><div class="censo-bar-label"><span title="${escapeAttr(label)}">${escapeHtml(label)}</span><strong>${n}</strong></div><div class="censo-bar-track" role="img" aria-label="${escapeAttr(label)}: ${n} de ${total}"><span style="width:${Math.max(2,Math.round(n/max*100))}%"></span></div></div>`).join("");
 }
 function censoRank(rows, selector) { const map = new Map(); rows.forEach(row => { const key = selector(row); if (key) map.set(key, (map.get(key)||0)+1); }); return [...map].sort((a,b)=>b[1]-a[1] || a[0].localeCompare(b[0],"pt-BR")); }
-function renderCensoAnalytics() {
-  const filter = document.getElementById("censo-neighborhood-filter"); if (!filter) return;
-  const all = state.classes.flatMap(cl => (state.studentsByClass[cl.id] || []).map(student => ({student,cl})));
-  const distinct = censoUnique(all);
-  const bairros = [...new Set(distinct.map(({student})=>censoText(student.neighborhood)).filter(Boolean))].sort((a,b)=>a.localeCompare(b,"pt-BR"));
-  const old = censoDashboardBairro;
-  filter.replaceChildren(new Option("Todos os bairros", ""));
-  bairros.forEach(b=>filter.add(new Option(b,b)));
-  if (old && bairros.some(b=>censoKey(b)===censoKey(old))) { filter.value=bairros.find(b=>censoKey(b)===censoKey(old)); } else { censoDashboardBairro=""; filter.value=""; }
-  const matches = ({student}) => !censoDashboardBairro || censoKey(student.neighborhood)===censoKey(censoDashboardBairro);
-  const filtered = all.filter(matches), people = distinct.filter(matches);
-  const summary=document.getElementById("censo-filter-summary");
-  if (summary) summary.innerHTML = `<strong>${people.length}</strong> participante${people.length===1?"":"s"} identificado${people.length===1?"":"s"} · <strong>${filtered.length}</strong> vínculo${filtered.length===1?"":"s"} em turma · <strong>${bairros.length}</strong> bairro${bairros.length===1?"":"s"} com cadastro`;
-  const byBairro = censoRank(people,({student})=>censoText(student.neighborhood)||"Bairro não informado");
-  const byActivity = censoRank(filtered,({cl})=>censoText(cl.sport)||"Atividade não informada");
-  const byAge = censoRank(people,({student})=>{const a=censoAge(student);return a===null?"Idade não informada":a<=6?"0 a 6 anos":a<=11?"7 a 11 anos":a<=14?"12 a 14 anos":a<=17?"15 a 17 anos":a<=29?"18 a 29 anos":a<=59?"30 a 59 anos":"60 anos ou mais";});
-  const ageOrder=["0 a 6 anos","7 a 11 anos","12 a 14 anos","15 a 17 anos","18 a 29 anos","30 a 59 anos","60 anos ou mais","Idade não informada"];
-  byAge.sort((a,b)=>ageOrder.indexOf(a[0])-ageOrder.indexOf(b[0]));
-  const byGender = censoRank(people,({student})=>normalizeGender(student.gender)||"Não informado");
-  censoPlot("censo-chart-neighborhood",byBairro,people.length,"Cadastre participantes com bairro para visualizar a distribuição.");
-  censoPlot("censo-chart-activity",byActivity,filtered.length,"Não há matrículas neste filtro.");
-  censoPlot("censo-chart-age",byAge,people.length,"Não há participantes neste filtro.");
-  censoPlot("censo-chart-gender",byGender,people.length,"Não há participantes neste filtro.");
-  censoPlot("censo-chart-status",censoRank(filtered,({student})=>studentIsActive(student)?"Ativa":"Inativa"),filtered.length,"Sem matrículas.");
-  censoPlot("censo-chart-classes",censoRank(filtered,({cl})=>cl.name||"Turma"),filtered.length,"Sem matrículas.");
-  censoPlot("censo-chart-pcd",censoRank(people,({student})=>student.pcdStatus||"Não informado"),people.length,"Sem cadastros.");
-}
-document.addEventListener("change",event=>{ if(event.target?.id==="censo-neighborhood-filter"){censoDashboardBairro=event.target.value;renderCensoAnalytics();} });
+const insights = createInsights({
+  getRows: () => state.classes.flatMap(cl => (state.studentsByClass[cl.id] || []).map(student => ({student,cl}))),
+  getLoading: () => state.classes.some(cl => !(cl.id in state.studentsByClass)),
+  loadMap: ensureMapLibrary,
+  loadJSON: fetchJsonResource
+});
+function renderCensoAnalytics() { insights.render(); }
 
 function renderClasses() {
   if (!state.classes.length) {
@@ -2064,10 +2064,11 @@ async function signInWithEmailPassword(event) {
     return;
   }
   setAuthBusy(true);
+  showAuthMessage('Conferindo acesso…');
   try {
     await signInWithEmailAndPassword(firebase.auth, email, password);
   } catch (error) {
-    showAuthMessage(friendlyFirebaseError(error));
+    showAuthFailure(error, email, 'Entrar');
   } finally {
     setAuthBusy(false);
   }
@@ -2088,11 +2089,12 @@ async function signUpWithEmailPassword() {
     return;
   }
   setAuthBusy(true);
+  showAuthMessage('Criando conta…');
   try {
     await createUserWithEmailAndPassword(firebase.auth, email, password);
     showAuthMessage("Conta criada com sucesso. Complete seu perfil ao entrar.");
   } catch (error) {
-    showAuthMessage(friendlyFirebaseError(error));
+    showAuthFailure(error, email, 'Criar conta');
   } finally {
     setAuthBusy(false);
   }
@@ -2104,6 +2106,7 @@ function wireStaticEvents() {
   ui["email-auth-form"]?.addEventListener("submit", signInWithEmailPassword);
   ui["email-sign-up"]?.addEventListener("click", signUpWithEmailPassword);
   ui["email-password-reset"]?.addEventListener("click", requestPasswordRecovery);
+  [ui['auth-email'],ui['auth-password']].forEach(input=>input?.addEventListener('input',clearAuthFeedback));
   ui["mobile-menu"]?.addEventListener("click", () => ui.sidebar.classList.toggle("open"));
   ui["profile-menu"]?.addEventListener("click", () => {
     const open = ui["profile-popover"].classList.toggle("hidden");
@@ -2204,7 +2207,11 @@ async function bootstrap() {
   if (ui["occurrence-time"]) ui["occurrence-time"].value = localTime();
   renderHelp();
   renderSettings();
-  await loadBundledTerritoryZones();
+  loadBundledTerritoryZones().then(() => {
+    state.territoryZones = mergeTerritoryZones(state.bundledTerritoryZones, state.territoryZones);
+    populateTerritoryZoneOptions(); populateClassTerritoryZoneOptions();
+    if (state.activeView === 'territory') { renderTerritory(); renderNeighborhoodDirectory().catch(e=>toast(e.message,'error')); }
+  }).catch(error => console.warn('Referências territoriais indisponíveis', error));
 
   const configured = isFirebaseConfigured(window.FIREBASE_CONFIG);
   if (!configured) {
@@ -2274,6 +2281,8 @@ async function prepareWorkspace() {
 }
 
 function clearWorkspaceState() {
+  state.sessionRevision++; state.censusHydrationId++; state.activeView="dashboard";
+  insights.reset(); state.territoryMap?.remove(); state.territoryMap=null;
   registryRows=[]; state.activityCatalogue=[]; state.selectedNeighborhood="";
   stopSubscriptions();
   state.profile = null;
@@ -2327,6 +2336,7 @@ function syncMonthlyAttendance() {
 
 function setAuthBusy(busy) {
   state.authBusy = busy;
+  [ui['auth-email'],ui['auth-password']].forEach(input=>{if(input)input.disabled=busy;});
   [ui["google-sign-in"], ui["email-sign-in"], ui["email-sign-up"], ui["email-password-reset"]].forEach((button) => { if (button) button.disabled = busy || !firebase.auth; });
   if (ui["google-sign-in"]) ui["google-sign-in"].lastChild.textContent = busy ? "Abrindo acesso…" : "Entrar com Google (admin)";
   if (ui["email-sign-in"]) ui["email-sign-in"].textContent = busy ? "Aguarde…" : "Entrar na plataforma";
@@ -2336,6 +2346,8 @@ function setAuthBusy(busy) {
 
 function setActiveView(view, { preserveScroll = false } = {}) {
   if (["admin","students"].includes(view) && !state.isAdmin) view = "dashboard";
+  if (state.activeView === 'territory' && view !== 'territory') { state.territoryMap?.remove(); state.territoryMap=null; }
+  if (view !== 'heat') insights.hideHeat();
   state.activeView = view;
   $$(".view").forEach((section) => section.classList.toggle("active", section.id === `view-${view}`));
   $$(".nav-item[data-view]").forEach((button) => button.classList.toggle("active", button.dataset.view === view));
@@ -2345,6 +2357,8 @@ function setActiveView(view, { preserveScroll = false } = {}) {
   ui.sidebar.classList.remove("open");
   if (!preserveScroll) window.scrollTo({ top: 0, behavior: "smooth" });
 
+  if (view === "heat") insights.showHeat();
+  if (view === "dashboard") insights.render();
   if (view === "classes") ensureClassSelection();
   if (view === "attendance") ensureAttendanceReady();
   if (view === "admin") renderAdmin();
@@ -3378,16 +3392,18 @@ async function renderNeighborhoodDirectory() {
     neighborhoodBase=(state.neighborhoodDirectory?.neighborhoods||[]).map(n=>n.name);
     if(!neighborhoodBase.length)neighborhoodBase=(await fetchJsonResource('data/votorantim_bairros_base.geojson')).features.map(f=>f.properties.bairro_original).filter(Boolean);
   }
+  const peopleByNeighborhood = new Map();
+  censoUnique(loadedStudents().map(student=>({student}))).forEach(row=>{const k=neighborhoodKey(row.student.neighborhood);const list=peopleByNeighborhood.get(k)||[];list.push(row);peopleByNeighborhood.set(k,list);});
   const q=neighborhoodKey(document.getElementById('neighborhood-search').value);
   const names=[...new Set([...neighborhoodBase,...state.territoryZones.map(z=>z.name),...allSportsCenters().map(c=>c.neighborhood).filter(Boolean),...loadedStudents().map(s=>s.neighborhood).filter(Boolean)])].sort((a,b)=>a.localeCompare(b,'pt-BR'));
   const unique=new Map();names.forEach(n=>{if(!unique.has(neighborhoodKey(n)))unique.set(neighborhoodKey(n),n);});
   document.getElementById('neighborhood-directory').innerHTML=[...unique.values()].filter(n=>!q||neighborhoodKey(n).includes(q)).map(n=>{
-    const people=censoUnique(loadedStudents().map(student=>({student}))).filter(({student})=>neighborhoodKey(student.neighborhood)===neighborhoodKey(n));
+    const people=peopleByNeighborhood.get(neighborhoodKey(n)) || [];
     return `<button type="button" data-v11="neighborhood" data-name="${escapeAttr(n)}" class="v11-neighborhood ${state.selectedNeighborhood===n?'selected':''}"><span>${escapeHtml(n)}</span><b>${people.length}</b></button>`;
   }).join('')||'<p>Nenhum bairro encontrado.</p>';
   const selected=state.selectedNeighborhood;
   if(selected) {
-    const people=censoUnique(loadedStudents().map(student=>({student}))).filter(({student})=>neighborhoodKey(student.neighborhood)===neighborhoodKey(selected));
+    const people=peopleByNeighborhood.get(neighborhoodKey(selected)) || [];
     const source=state.neighborhoodDirectory?.neighborhoods.find(n=>neighborhoodKey(n.name)===neighborhoodKey(selected));
     document.getElementById('neighborhood-detail').innerHTML=`<h3>${escapeHtml(selected)} • ${people.length} pessoas</h3><p>Contagem por bairro declarado no cadastro. O mapa destaca o agrupamento em que este bairro é predominante. Para localidades sem agrupamento próprio, mostra os polígonos de origem associados. São áreas de referência, sujeitas à revisão municipal.</p><p>${source ? source.dominantSectorCodes.length+" polígonos com predominância • "+source.sectorCodes.length+" com endereços associados • CEPs: "+source.postalCodes.slice(0,10).map(c=>escapeHtml(c.replace(/^(\d{5})(\d{3})$/,"$1-$2"))).join(", ")+(source.postalCodes.length>10?"…":"") : "Bairro declarado no cadastro; sem correspondência confirmada no CNEFE."}</p>${state.isAdmin?people.map(({student:s})=>`<span class="pill">${escapeHtml(s.globalStudentId||'ID pendente')} · ${escapeHtml(s.fullName)}</span>`).join(''):''}`;
   }else document.getElementById('neighborhood-detail').innerHTML='<p>Selecione um bairro para consultar sua população cadastrada. Contagens consideram somente os cadastros autorizados e carregados.</p>';
@@ -3479,7 +3495,7 @@ async function focusSportsCenter(id) {
   await state.territoryMapReady;
   const leafletMarker=state.sportsCenterMarkers?.get(id);
   const googleMarker=state.googleSportsCenterMarkers?.get(id);
-  if(leafletMarker){state.territoryMap.setView([center.latitude,center.longitude],16);leafletMarker.openPopup();}
+  if(leafletMarker && state.territoryMap){state.territoryMap.setView([center.latitude,center.longitude],16);leafletMarker.openPopup();}
   else if(googleMarker){state.googleTerritoryMap.setCenter({lat:center.latitude,lng:center.longitude});state.googleTerritoryMap.setZoom(16);googleMarker.popup.open({map:state.googleTerritoryMap,anchor:googleMarker.marker});}
   else {toast('O mapa está indisponível. O endereço permanece na lista de locais.','error');}
   document.getElementById('territory-map').scrollIntoView({behavior:'smooth',block:'center'});

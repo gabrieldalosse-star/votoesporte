@@ -44,12 +44,12 @@ test('venue directory includes Altos, every catalog place, and locations with no
 
 test('a failed or hanging territory file never blocks other datasets or login',async()=>{
   const state={};let cleared=0;
-  const context={state,console:{warn(){}},AbortController,setTimeout:()=>1,clearTimeout:()=>{cleared++;},fetch:async url=>{
-    if(url.includes('setores-ibge'))throw Error('offline');
+  const context={state,resourceRequests:new Map(),console:{warn(){}},AbortController,setTimeout:()=>1,clearTimeout:()=>{cleared++;},fetch:async url=>{
+    if(url.includes('mapa-leve'))throw Error('offline');
     return {ok:true,json:async()=>url.includes('polos-esportivos')?{centers:[{id:'altos'}]}:url.includes('diretorio')?{neighborhoods:[],assignments:[]}:url.includes('cep-bairros')?{postalCodes:{}}:{features:[]}};
   }};
   vm.createContext(context);vm.runInContext(extract('async function fetchJsonResource','function createFirebase')+'\nglobalThis.load=loadBundledTerritoryZones;',context);
-  await context.load();assert.equal(state.sportsCenters[0].id,'altos');assert.equal(state.territoryLoadErrors.length,1);assert.equal(cleared,6);
+  await context.load();assert.equal(state.sportsCenters[0].id,'altos');assert.equal(state.territoryLoadErrors.length,1);assert.equal(cleared,5);
 });
 
 test('map selection uses all matching buttons; focus waits for the new map',()=>{

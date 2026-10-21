@@ -1,0 +1,6 @@
+VotoEsporte 12.0
+Site completo. Mantenha assets, data e docs na raiz servida pelo GitHub Pages.
+Preserve sua configuracao firebase-config.js.
+Leia docs/MELHORIAS-12.0.md para validacao, uso e limites.
+43 testes passaram. Publicacao nao realizada; permissao GitHub recusada.
+Nenhum aluno real ou senha e incluido neste pacote.
