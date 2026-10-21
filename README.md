@@ -1,3 +1,7 @@
+# VotoEsporte 11.1 — Correções de operação e dados
+
+Leia [as correções e a atualização de F/M na base](docs/CORRECOES-11.1.md).
+
 # VotoEsporte V11 — Cadastro único e territórios
 
 Leia [a implantação e as alterações da V11](docs/V11-CADASTRO-UNICO-E-TERRITORIO.md). Esta versão exige publicar as regras Firestore antes de liberar o cadastro atualizado. O histórico das versões anteriores está preservado abaixo.

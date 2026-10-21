@@ -206,7 +206,7 @@
 <a download="" href="data/votorantim-zonas.example.geojson">Baixar modelo GeoJSON sem dados pessoais →</a>
 </article>
 </div>
-<article class="panel v11-panel"><div class="panel-heading"><div><p class="eyebrow">BAIRROS</p><h3>Explore a cobertura por bairro</h3></div><button class="button button-secondary" data-v11="clear-territory">Limpar seleção</button></div><label>Buscar bairro<input id="neighborhood-search" type="search" placeholder="Digite o nome do bairro"/></label><div id="neighborhood-directory" class="v11-neighborhoods"></div><div id="neighborhood-detail" aria-live="polite"></div></article><article class="panel v11-panel"><div class="panel-heading"><div><p class="eyebrow">REDE ESPORTIVA</p><h3>Polos da Secretaria</h3><p id="sports-center-count" role="status"></p></div><label class="checkbox-label"><input id="show-sports-centers" type="checkbox" checked/> Mostrar pontos verdes no mapa</label></div><p>Endereços da lista pública de atividades da Secretaria • setembro/2026. Clique no ponto verde para consultar endereço e atividades.</p><div id="sports-center-directory" class="v11-centers"></div></article><article class="panel territory-links-panel"><div class="panel-heading"><div><p class="eyebrow">BAIRROS E NÚCLEOS</p><h3>Relações cadastradas</h3></div></div><div class="territory-links" id="territory-links"></div></article>
+<article class="panel v11-panel"><div class="panel-heading"><div><p class="eyebrow">BAIRROS</p><h3>Explore a cobertura por bairro</h3></div><button class="button button-secondary" data-v11="clear-territory">Limpar seleção</button></div><label>Buscar bairro<input id="neighborhood-search" type="search" placeholder="Digite o nome do bairro"/></label><div id="neighborhood-directory" class="v11-neighborhoods"></div><div id="neighborhood-detail" aria-live="polite"></div></article><article class="panel v11-panel"><div class="panel-heading"><div><p class="eyebrow">REDE ESPORTIVA</p><h3>Polos da Secretaria</h3><p id="sports-center-count" role="status"></p></div><label class="checkbox-label"><input id="show-sports-centers" type="checkbox" checked/> Mostrar pontos verdes no mapa</label></div><p>Endereços da lista pública de atividades da Secretaria • setembro/2026. Os locais cadastrados nas turmas e no catálogo também aparecem abaixo. Pontos verdes indicam posição conhecida.</p><div class="v11-actions"><label>Buscar local ou bairro<input type="search" id="sports-center-search" placeholder="Ex.: Altos de Votorantim"/></label><button class="button button-secondary" type="button" data-v11="clear-territory">Mostrar todos os locais</button></div><div id="sports-center-directory" class="v11-centers"></div></article><article class="panel territory-links-panel"><div class="panel-heading"><div><p class="eyebrow">BAIRROS E NÚCLEOS</p><h3>Relações cadastradas</h3></div></div><div class="territory-links" id="territory-links"></div></article>
 <article class="panel census-guidance">
 <div><span aria-hidden="true">◌</span><h3>Cadastros e território integrados</h3><p>O cadastro já separa identificação, contato, território e referência de censo. O formulário usa como referência os cabeçalhos da planilha Censo Willian; o Censo – Teste orienta a separação de locais, atividades e turmas.</p></div>
 <div class="census-guidance-tags"><span>sem geocodificação de endereço</span><span>sem pinos individuais</span><span>relatórios agregados</span></div>
@@ -349,27 +349,23 @@
 <div class="dialog-actions"><button class="button button-secondary" id="tour-back" type="button">Voltar</button><button class="button button-primary" id="tour-next" type="button">Próximo</button></div>
 </dialog>
 <script>
-      // Visible diagnostics if remote ES modules fail or authentication stalls.
-      window.__votoAppError = "";
-      window.addEventListener("error", function(e) {
-        window.__votoAppError = e.message || "Falha ao carregar JavaScript";
-      });
-      window.addEventListener("unhandledrejection", function(e) {
-        window.__votoAppError = String(e.reason && e.reason.message || e.reason || "Falha na conexão");
-      });
+      window.__votoAppError = '';
+      window.addEventListener('error', function(e) {window.__votoAppError = e.message || 'Falha ao carregar JavaScript';});
+      window.addEventListener('unhandledrejection', function(e) {window.__votoAppError = String(e.reason && e.reason.message || e.reason || 'Falha de conexão');});
       window.setTimeout(function() {
-        var loading = document.getElementById("loading-screen");
-        if (!loading || loading.classList.contains("hidden")) return;
-        loading.classList.add("hidden");
-        var auth = document.getElementById("auth-screen");
-        if (auth) auth.classList.remove("hidden");
-        var warning = document.createElement("div");
-        warning.setAttribute("role","alert");
-        warning.style.cssText = "position:fixed;bottom:12px;left:12px;right:12px;z-index:9999;background:#fff;color:#17365c;padding:16px;border-radius:12px;box-shadow:0 3px 14px #0004;font:15px system-ui";
-        var detail = window.__votoAppError || "O Firebase não concluiu a autenticação ou os módulos não carregaram.";
-        warning.textContent = "Erro de inicialização: " + detail + " — Envie uma captura desta mensagem.";
-        document.body.appendChild(warning);
-      }, 12000);
+        var loading = document.getElementById('loading-screen');
+        if (!loading || loading.classList.contains('hidden')) return;
+        loading.classList.add('hidden');
+        document.getElementById('auth-screen').classList.remove('hidden');
+        var warning = document.getElementById('auth-message');
+        warning.setAttribute('role','alert');
+        warning.textContent = 'A inicialização não terminou. Confira sua conexão e tente novamente. ' + window.__votoAppError;
+        ['google-sign-in','email-sign-in','email-sign-up'].forEach(function(id){document.getElementById(id).disabled=true;});
+        var retry = document.createElement('button');
+        retry.type = 'button'; retry.className = 'button button-secondary';retry.textContent='Tentar novamente';
+        retry.addEventListener('click',function(){window.location.reload();});
+        warning.after(retry);
+      }, 15000);
     </script>
 <script src="firebase-config.js"></script>
 <script crossorigin="" defer="" src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>

@@ -36,5 +36,5 @@
  }
  // The form structure belongs to index.html. This compatibility layer must
  // never rearrange it: doing so previously detached the student fields.
- window.CensoV2={openClass,prepareClass,openStudent};
+ window.CensoV2={openClass,prepareClass,openStudent,places};
 })();
