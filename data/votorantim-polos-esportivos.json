@@ -1,0 +1,383 @@
+{
+  "metadata": {
+    "source": "https://www.votorantim.sp.gov.br/atividades-esportivas-recreativas",
+    "retrievedAt": "2026-10-21",
+    "sourceUpdatedAt": "2026-09-01",
+    "coordinateSources": [
+      "IBGE CNEFE 2022",
+      "OpenStreetMap contributors • ODbL 1.0"
+    ],
+    "note": "Public venue coordinates only. Historical official Google Earth download was unavailable to non-editors; no restricted file was imported."
+  },
+  "centers": [
+    {
+      "id": "aab-serrano",
+      "name": "Associação Amigos de Bairro Jardim Serrano",
+      "address": "Rua João Bistafa, 127, Jardim Serrano, Votorantim/SP",
+      "neighborhood": "Jardim Serrano",
+      "aliases": [
+        "Associação Amigos de Bairro Jardim Serrano"
+      ],
+      "officialActivities": [
+        "ginástica funcional",
+        "ioga"
+      ],
+      "sourceUrl": "https://www.votorantim.sp.gov.br/atividades-esportivas-recreativas",
+      "checkedAt": "2026-10-21",
+      "latitude": -23.559146,
+      "longitude": -47.455592,
+      "positionStatus": "address-cnefe-2022-review-entrance",
+      "positionSource": "IBGE CNEFE 2022 • equipamento ou endereço público"
+    },
+    {
+      "id": "espaco-jovem-toledo",
+      "name": "Espaço Jovem Jardim Toledo • Centro Comunitário Vital de Oliveira",
+      "address": "Rua Joaquim Corrêa, 250, Jardim Toledo, Votorantim/SP",
+      "neighborhood": "Jardim Toledo",
+      "aliases": [
+        "Espaço Jovem Jardim Toledo — Centro Comunitário Vital de Oliveira"
+      ],
+      "officialActivities": [
+        "ginástica funcional"
+      ],
+      "sourceUrl": "https://www.votorantim.sp.gov.br/atividades-esportivas-recreativas",
+      "checkedAt": "2026-10-21",
+      "latitude": -23.527751,
+      "longitude": -47.443488,
+      "positionStatus": "institution-cnefe-2022",
+      "positionSource": "IBGE CNEFE 2022 • equipamento ou endereço público"
+    },
+    {
+      "id": "cc-bela-vista",
+      "name": "Centro Comunitário Orlando Honório Pereira • Parque Bela Vista",
+      "address": "Rua Benedito Elpírio Costa, 80, Parque Bela Vista, Votorantim/SP",
+      "neighborhood": "Parque Bela Vista",
+      "aliases": [
+        "Centro Comunitário Orlando Honório Pereira — Parque Bela Vista",
+        "Centro Comunitário Parque Bela Vista"
+      ],
+      "officialActivities": [
+        "ginástica funcional",
+        "ritmos",
+        "ioga"
+      ],
+      "sourceUrl": "https://www.votorantim.sp.gov.br/atividades-esportivas-recreativas",
+      "checkedAt": "2026-10-21",
+      "latitude": -23.544645,
+      "longitude": -47.464658,
+      "positionStatus": "institution-cnefe-2022",
+      "positionSource": "IBGE CNEFE 2022 • equipamento ou endereço público"
+    },
+    {
+      "id": "tenis-mesa",
+      "name": "Centro de Treinamento de Tênis de Mesa",
+      "address": "Rua Sorocaba, 809/815, Vila Dominguinho, Votorantim/SP",
+      "neighborhood": "Vila Dominguinho",
+      "aliases": [
+        "Centro de Treinamento de Tênis de Mesa"
+      ],
+      "officialActivities": [
+        "tênis de mesa"
+      ],
+      "sourceUrl": "https://www.votorantim.sp.gov.br/atividades-esportivas-recreativas",
+      "checkedAt": "2026-10-21",
+      "latitude": -23.543181,
+      "longitude": -47.443733,
+      "positionStatus": "institution-cnefe-2022",
+      "positionSource": "IBGE CNEFE 2022 • equipamento ou endereço público"
+    },
+    {
+      "id": "cc-vossoroca",
+      "name": "Centro Comunitário Vossoroca • Espaço Jovem",
+      "address": "Rua Pedro Rodrigues Ribeiro, 173, Vossoroca, Votorantim/SP",
+      "neighborhood": "Vossoroca",
+      "aliases": [
+        "Espaço Jovem Vossoroca — Centro Comunitário"
+      ],
+      "officialActivities": [
+        "ginástica funcional",
+        "karatê",
+        "ginástica da 3ª idade",
+        "mat pilates",
+        "ioga"
+      ],
+      "sourceUrl": "https://www.votorantim.sp.gov.br/atividades-esportivas-recreativas",
+      "checkedAt": "2026-10-21",
+      "latitude": -23.551322,
+      "longitude": -47.459155,
+      "positionStatus": "address-cnefe-2022-review-entrance",
+      "positionSource": "IBGE CNEFE 2022 • equipamento ou endereço público"
+    },
+    {
+      "id": "ginasio-mirante",
+      "name": "Ginásio Poliesportivo Willian de Souza Ferreira",
+      "address": "Rua Júlia Martins Domingues, 13, Mirante dos Óvnis, Votorantim/SP",
+      "neighborhood": "Mirante dos Óvnis",
+      "aliases": [
+        "Ginásio Poliesportivo Willian de Souza Ferreira"
+      ],
+      "officialActivities": [
+        "caminhada",
+        "desenvolvimento motor",
+        "iniciação esportiva",
+        "mini-handebol"
+      ],
+      "sourceUrl": "https://www.votorantim.sp.gov.br/atividades-esportivas-recreativas",
+      "checkedAt": "2026-10-21",
+      "latitude": -23.5515605,
+      "longitude": -47.4536672,
+      "positionStatus": "public-map-address-needs-review",
+      "positionSource": "https://www.google.com/maps/place/Ginasio+Mirante+dos+Ovnis/data=!4m7!3m6!1s0x94c58a0676d7b79d:0x5c2980b6a53a0d29!8m2!3d-23.5515605!4d-47.4536672!16s%2Fg%2F11c5rwd2n0",
+      "positionNote": "Localização pública do equipamento. Confira a oferta atual com a Secretaria."
+    },
+    {
+      "id": "cermag",
+      "name": "Centro Esportivo Recreativo Municipal Aldovir Gori • Cermag",
+      "address": "Rua Agenor Augusto Lins / Rua Pedro Fontes, s/n, Rio Acima, Votorantim/SP",
+      "neighborhood": "Rio Acima",
+      "aliases": [
+        "Centro Esportivo Recreativo Municipal Aldovir Gori — Cermag",
+        "Campo do Cermag",
+        "Cermag"
+      ],
+      "officialActivities": [
+        "minobol",
+        "vôlei",
+        "futsal",
+        "Votorantim Zen"
+      ],
+      "sourceUrl": "https://www.votorantim.sp.gov.br/atividades-esportivas-recreativas",
+      "checkedAt": "2026-10-21",
+      "latitude": -23.5391,
+      "longitude": -47.435572,
+      "positionStatus": "institution-cnefe-2022",
+      "positionSource": "IBGE CNEFE 2022 • equipamento ou endereço público"
+    },
+    {
+      "id": "ginasio-joao",
+      "name": "Ginásio Poliesportivo Professor João Carlos de Camargo",
+      "address": "Rua Dinorá Balmiça Vasques, 109, Altos de Votorantim, Votorantim/SP",
+      "neighborhood": "Altos de Votorantim",
+      "aliases": [
+        "Ginásio Poliesportivo Professor João Carlos de Camargo"
+      ],
+      "officialActivities": [
+        "ginástica funcional",
+        "ritmos",
+        "handebol",
+        "mini-handebol"
+      ],
+      "sourceUrl": "https://www.votorantim.sp.gov.br/atividades-esportivas-recreativas",
+      "checkedAt": "2026-10-21",
+      "latitude": -23.541152,
+      "longitude": -47.41666,
+      "positionStatus": "institution-cnefe-2022",
+      "positionSource": "IBGE CNEFE 2022 • equipamento ou endereço público"
+    },
+    {
+      "id": "sesi",
+      "name": "Sesi de Votorantim",
+      "address": "Avenida Cláudio Pinto Nascimento, 140, Parque Morumbi, Votorantim/SP",
+      "neighborhood": "Parque Morumbi",
+      "aliases": [
+        "Sesi de Votorantim"
+      ],
+      "officialActivities": [
+        "natação",
+        "atividades recreativas da 3ª idade"
+      ],
+      "sourceUrl": "https://www.votorantim.sp.gov.br/atividades-esportivas-recreativas",
+      "checkedAt": "2026-10-21",
+      "latitude": -23.537422,
+      "longitude": -47.454845,
+      "positionStatus": "institution-cnefe-2022",
+      "positionSource": "IBGE CNEFE 2022 • equipamento ou endereço público"
+    },
+    {
+      "id": "ceu-artes",
+      "name": "CEU das Artes • Jardim Cristal",
+      "address": "Rua Elcia Pinto da Rosa, 78, Residencial Cristal, Votorantim/SP",
+      "neighborhood": "Residencial Cristal",
+      "aliases": [
+        "Centro de Artes e Esporte — Céu das Artes",
+        "Espaço CEU das Artes"
+      ],
+      "officialActivities": [
+        "ritmos",
+        "ginástica funcional"
+      ],
+      "sourceUrl": "https://www.votorantim.sp.gov.br/atividades-esportivas-recreativas",
+      "checkedAt": "2026-10-21",
+      "latitude": -23.579084,
+      "longitude": -47.4654237,
+      "positionStatus": "mapped-facility-osm",
+      "positionSource": "https://www.openstreetmap.org/way/1459376689"
+    },
+    {
+      "id": "cras-promorar",
+      "name": "Cras Jardim São Mateus • Promorar",
+      "address": "Rua Patrícia Maria dos Santos, s/n, Pro Morar, Votorantim/SP",
+      "neighborhood": "Pro Morar",
+      "aliases": [
+        "Cras Jardim São Mateus",
+        "Cras Promorar"
+      ],
+      "officialActivities": [
+        "ginástica funcional"
+      ],
+      "sourceUrl": "https://www.votorantim.sp.gov.br/atividades-esportivas-recreativas",
+      "checkedAt": "2026-10-21",
+      "latitude": -23.537277,
+      "longitude": -47.408429,
+      "positionStatus": "institution-cnefe-2022",
+      "positionSource": "IBGE CNEFE 2022 • equipamento ou endereço público"
+    },
+    {
+      "id": "upa-garcia",
+      "name": "UPA da Vila Garcia • ponto de encontro para caminhada",
+      "address": "Avenida Izabel Ferreira Coelho, 217, Vila Garcia, Votorantim/SP",
+      "neighborhood": "Vila Garcia",
+      "aliases": [
+        "UPA Vila Garcia"
+      ],
+      "officialActivities": [
+        "caminhada"
+      ],
+      "sourceUrl": "https://www.votorantim.sp.gov.br/atividades-esportivas-recreativas",
+      "checkedAt": "2026-10-21",
+      "latitude": -23.5302381,
+      "longitude": -47.4300801,
+      "positionStatus": "public-map-address-needs-review",
+      "positionSource": "https://www.google.com/maps/place/UBS+Vila+Garcia/data=!4m7!3m6!1s0x94cf61c07ccb6e53:0x202519b7369c6a07!8m2!3d-23.5302381!4d-47.4300801!16s%2Fg%2F1pzt5_z3k",
+      "positionNote": "A lista esportiva usa UPA Vila Garcia; o cadastro geográfico identifica UBS Vila Garcia. Confirmar o ponto de encontro da caminhada."
+    },
+    {
+      "id": "pista-bicicross",
+      "name": "Pista de Bicicross Lucas Furlani de Almeida",
+      "address": "Avenida Antônio Castanharo, s/n, Parque Jataí, Votorantim/SP",
+      "neighborhood": "Parque Jataí",
+      "aliases": [
+        "Pista de Bicicross Lucas Furlani de Almeida"
+      ],
+      "officialActivities": [
+        "bicicross"
+      ],
+      "sourceUrl": "https://www.votorantim.sp.gov.br/atividades-esportivas-recreativas",
+      "checkedAt": "2026-10-21",
+      "latitude": -23.5688543,
+      "longitude": -47.4563921,
+      "positionStatus": "mapped-facility-osm",
+      "positionSource": "https://www.openstreetmap.org/node/13383739089"
+    },
+    {
+      "id": "campo-vila-nova",
+      "name": "Campo do Vila Nova • Centro Esportivo Antonio Poli",
+      "address": "Rua Pedro Augusto Rangel, 70, Vila Nova, Votorantim/SP",
+      "neighborhood": "Vila Nova",
+      "aliases": [
+        "Campo da Vila Nova",
+        "Centro Esportivo e Educacional Antonio Poli — Vila Nova"
+      ],
+      "officialActivities": [
+        "caminhada",
+        "futebol misto"
+      ],
+      "sourceUrl": "https://www.votorantim.sp.gov.br/atividades-esportivas-recreativas",
+      "checkedAt": "2026-10-21",
+      "latitude": -23.5375381,
+      "longitude": -47.4163508,
+      "positionStatus": "public-map-address-needs-review",
+      "positionSource": "https://www.google.com/maps/place/Campo+Municipal+do+Vila+Nova+Votorantim/data=!4m6!3m5!1s0x94cf61b6ee86af93:0x415a9cb7d5cc53aa!8m2!3d-23.5375381!4d-47.4163508!16s%2Fg%2F11q3cdhkr2",
+      "positionNote": "O mapa público indica acesso pela Rua Ida Maria Rodrigues Walter, 200; a lista da Secretaria informa Pedro Augusto Rangel, 70. Conferir acesso do polo."
+    },
+    {
+      "id": "esf-tatiana",
+      "name": "Unidade Estratégia Saúde da Família Jardim Tatiana • caminhada",
+      "address": "Rua Adão Martins, s/n, Jardim Tatiana, Votorantim/SP",
+      "neighborhood": "Jardim Tatiana",
+      "aliases": [
+        "Unidade Estratégia Saúde da Família Jardim Tatiana"
+      ],
+      "officialActivities": [
+        "caminhada"
+      ],
+      "sourceUrl": "https://www.votorantim.sp.gov.br/atividades-esportivas-recreativas",
+      "checkedAt": "2026-10-21",
+      "latitude": -23.5442547,
+      "longitude": -47.4948368,
+      "positionStatus": "public-map-address-needs-review",
+      "positionSource": "https://www.google.com/maps/place/Unidade+Estrat%C3%A9gia+de+Sa%C3%BAde+da+Fam%C3%ADlia+Jardim+Tatiana/data=!4m6!3m5!1s0x94c58bd1a9797cb1:0x78e841925f893ea1!8m2!3d-23.5442547!4d-47.4948368!16s%2Fg%2F11h6fm6prz",
+      "positionNote": "Ponto da Rua Adão Martins citado na lista esportiva. A unidade de saúde tem endereço novo no CNES; confirmar o ponto de encontro da caminhada."
+    },
+    {
+      "id": "escola-candido",
+      "name": "Emeief Professor Cândido dos Santos",
+      "address": "Rua Antônio Pereira de Almeida, 27, Green Valley, Votorantim/SP",
+      "neighborhood": "Green Valley",
+      "aliases": [
+        "EMEIEF Professor Cândido dos Santos"
+      ],
+      "officialActivities": [
+        "ginástica funcional"
+      ],
+      "sourceUrl": "https://www.votorantim.sp.gov.br/atividades-esportivas-recreativas",
+      "checkedAt": "2026-10-21",
+      "latitude": -23.558338,
+      "longitude": -47.490768,
+      "positionStatus": "institution-cnefe-2022",
+      "positionSource": "IBGE CNEFE 2022 • equipamento ou endereço público"
+    },
+    {
+      "id": "aab-rio-acima",
+      "name": "Associação de Amigos de Bairro do Rio Acima",
+      "address": "Rua Pedro Fontes, s/n, Rio Acima, Votorantim/SP",
+      "neighborhood": "Rio Acima",
+      "aliases": [
+        "Associação de Amigos de Bairro do Rio Acima"
+      ],
+      "officialActivities": [
+        "ginástica funcional"
+      ],
+      "sourceUrl": "https://www.votorantim.sp.gov.br/atividades-esportivas-recreativas",
+      "checkedAt": "2026-10-21",
+      "latitude": null,
+      "longitude": null,
+      "positionStatus": "pending-coordinate",
+      "positionSource": ""
+    },
+    {
+      "id": "proame-garcia",
+      "name": "Proame Vila Garcia",
+      "address": "Rua Alice Ferrari, 96, Jardim São Pedro, Votorantim/SP",
+      "neighborhood": "Jardim São Pedro",
+      "aliases": [
+        "PROAME Vila Garcia"
+      ],
+      "officialActivities": [
+        "judô"
+      ],
+      "sourceUrl": "https://www.votorantim.sp.gov.br/atividades-esportivas-recreativas",
+      "checkedAt": "2026-10-21",
+      "latitude": -23.532233,
+      "longitude": -47.432287,
+      "positionStatus": "institution-cnefe-2022",
+      "positionSource": "IBGE CNEFE 2022 • equipamento ou endereço público"
+    },
+    {
+      "id": "sede-sedesp",
+      "name": "Secretaria de Esportes • sede",
+      "address": "Rua João Alarcon, 50, Jardim Icatu, Votorantim/SP",
+      "neighborhood": "Jardim Icatu",
+      "aliases": [
+        "Secretaria de Esportes"
+      ],
+      "officialActivities": [],
+      "sourceUrl": "https://www.votorantim.sp.gov.br/portal/secretarias/12/esportes",
+      "checkedAt": "2026-10-21",
+      "latitude": -23.541631,
+      "longitude": -47.452136,
+      "positionStatus": "address-cnefe-2022-review-entrance",
+      "positionSource": "IBGE CNEFE 2022 • equipamento ou endereço público"
+    }
+  ]
+}

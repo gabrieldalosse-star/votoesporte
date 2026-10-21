@@ -38,7 +38,7 @@ function safeStorageSet(key, value) {
 }
 
 const DEMO_STORE_KEY = "votorantim-esporte-chamada-demo-v1";
-const APP_VERSION = "9.0.0-rc1";
+const APP_VERSION = "11.0.0";
 const FIREBASE_REQUIRED_KEYS = ["apiKey", "authDomain", "projectId", "appId"];
 const PAGE_TITLES = {
   dashboard: ["VISÃO GERAL", "Bom trabalho!"],
@@ -135,9 +135,18 @@ bootstrap().catch((error) => {
 });
 
 async function loadBundledTerritoryZones() {
-  // Nenhuma delimitação oficial de setores foi comprovada no pacote recebido.
-  // Não produzir polígonos sintéticos: administradores podem importar zonas validadas.
-  state.bundledTerritoryZones = [];
+  const [sectors, neighborhoods, directory] = await Promise.all(['data/votorantim-setores-ibge-2022.geojson','data/votorantim-bairros-referencia-cnefe-2022.geojson','data/votorantim-bairros-diretorio.json'].map(async url=>{const r=await fetch(url);if(!r.ok)throw Error('Camada territorial indisponível');return r.json();}));
+  state.censusTerritoryZones=sectors.features.map(f=>({id:'ibge-'+f.properties.cd_setor,name:directory.assignments.find(a=>a.sectorCode===f.properties.cd_setor)?.neighborhood||'Localidade não identificada',sectorCode:f.properties.cd_setor,sector:f.properties.situacao||'Censo 2022',sourceVersion:'IBGE • Censo 2022 • malha definitiva v02',geometry:f.geometry,layer:'sectors'}));
+  state.bundledTerritoryZones=neighborhoods.features.map(f=>({...f.properties,geometry:f.geometry,layer:'neighborhoods'}));
+  state.neighborhoodDirectory=directory;
+  state.territoryLayer='neighborhoods';
+  const [postal,complementary]=await Promise.all(['data/votorantim-cep-bairros.json','data/votorantim-bairros-complementares.geojson'].map(async url=>{const r=await fetch(url);if(!r.ok)throw Error('Base CEP indisponível');return r.json();}));
+  state.postalDirectory=postal.postalCodes;
+  state.bundledTerritoryZones.push(...complementary.features.map(f=>({...f.properties,geometry:f.geometry,layer:'neighborhoods'})));
+  const centerResponse=await fetch('data/votorantim-polos-esportivos.json');
+  if(!centerResponse.ok)throw Error('Cadastro de polos indisponível');
+  state.bundledSportsCenters=(await centerResponse.json()).centers;
+  state.sportsCenters=state.bundledSportsCenters.slice();
 }
 
 function createFirebase(config) {
@@ -235,6 +244,7 @@ function showAuthMessage(message) {
 }
 
 function subscribeClasses() {
+  subscribeActivityCatalogue();
   state.unsubscribers.classes?.();
   if (state.isDemo) {
     state.classes = repository.getDemoClasses();
@@ -321,7 +331,7 @@ function populateTerritoryZoneOptions(selectedValue = ui["student-territory-zone
   select.innerHTML = `<option value="">Nenhuma zona selecionada</option>${options}`;
   select.value = state.territoryZones.some((zone) => zone.id === selectedValue) ? selectedValue : "";
   ui["territory-field-help"].textContent = state.territoryZones.length
-    ? `${state.territoryZones.length} zona${state.territoryZones.length === 1 ? "" : "s"} aprovada${state.territoryZones.length === 1 ? "" : "s"} disponível${state.territoryZones.length === 1 ? "" : "is"}. A seleção permanece manual para proteger o endereço.`
+    ? `${state.territoryZones.length} zona${state.territoryZones.length === 1 ? "" : "s"} de referência disponível${state.territoryZones.length === 1 ? "" : "is"}. O CEP pode vincular o bairro automaticamente; você também pode revisar a zona.`
     : "A seleção é manual até a gestão importar uma camada territorial aprovada. Não há geocodificação de endereço.";
 }
 
@@ -349,21 +359,24 @@ function loadedStudents() {
 }
 
 function territoryStudentsByZone() {
-  return loadedStudents().reduce((counts, student) => {
-    const id = student.territoryZoneId || student.geo?.zoneId;
-    if (id) counts[id] = (counts[id] || 0) + 1;
-    return counts;
-  }, {});
+  const counts={},seen=new Set();
+  loadedStudents().filter(s=>!state.selectedNeighborhood||neighborhoodKey(s.neighborhood)===neighborhoodKey(state.selectedNeighborhood)).forEach(student=>{
+    const zone=state.territoryZones.find(z=>neighborhoodKey(z.name)===neighborhoodKey(student.neighborhood));
+    const id=zone?.id||student.territoryZoneId||student.geo?.zoneId;
+    const person=student.globalStudentId||censoPersonKey(student);
+    if(id&&!seen.has(id+'|'+person)){counts[id]=(counts[id]||0)+1;seen.add(id+'|'+person);}
+  });
+  return counts;
 }
 
 function classesForTerritoryZone(zone) {
   if (!zone) return [];
-  const zoneName = comparableText(zone.name);
+  const zoneName = neighborhoodKey(zone.name);
   return state.classes.filter((item) => {
     if (item.territoryZoneId === zone.id) return true;
     // Legacy classes did not have a zone field. Match only an explicit local
     // name so that an unrelated address never appears as territorial data.
-    return zoneName && comparableText(item.location).includes(zoneName);
+    return zoneName && neighborhoodKey(item.location).includes(zoneName);
   });
 }
 
@@ -372,12 +385,16 @@ function territoryZonePopup(zone, studentCount) {
   const activities = classes.length
     ? `<ul class="territory-map-classes">${classes.map((item) => `<li><strong>${escapeHtml(item.location || "Núcleo sem local")}</strong><span>${escapeHtml([item.sport, item.name, item.schedule].filter(Boolean).join(" · ") || "Aula sem detalhes")}</span></li>`).join("")}</ul>`
     : `<p class="territory-map-empty-detail">Nenhuma aula vinculada a este bairro ainda.</p>`;
-  return `<div class="territory-map-popup"><h4>${escapeHtml(zone.name || "Bairro")}</h4><p>${studentCount} cadastro${studentCount === 1 ? "" : "s"} associado${studentCount === 1 ? "" : "s"} · ${classes.length} núcleo${classes.length === 1 ? "" : "s"}</p><h5>Núcleos e aulas</h5>${activities}</div>`;
+  return `<div class="territory-map-popup"><h4>${escapeHtml(zone.name || "Bairro")}</h4><p>${studentCount} cadastro${studentCount === 1 ? "" : "s"} associado${studentCount === 1 ? "" : "s"} · ${classes.length} núcleo${classes.length === 1 ? "" : "s"}</p>${zone.sectorCodes?`<p>${zone.sectorCodes.length} polígonos agrupados${zone.reviewRequired?" • inclui áreas com mais de uma localidade":""}</p>`:""}<h5>Núcleos e aulas</h5>${activities}</div>`;
 }
 
 function selectTerritoryZoneFromMap(zoneId) {
   state.selectedTerritoryZoneId = zoneId;
-  $$('[data-action="select-territory-zone"]').forEach((button) => {
+  const selected=(state.territoryLayer==='sectors'?state.censusTerritoryZones:state.territoryZones).find(z=>z.id===zoneId);
+  state.selectedNeighborhood=selected?.name||'';
+  renderNeighborhoodDirectory().catch(e=>toast(e.message,'error'));
+  renderTerritory();
+  $('[data-action="select-territory-zone"]').forEach((button) => {
     button.classList.toggle("selected", button.dataset.id === zoneId);
   });
 }
@@ -401,21 +418,25 @@ function renderTerritoryFilter(zones) {
 
 function renderTerritory() {
   if (!ui["territory-summary"]) return;
-  const zones = state.territoryZones;
+  renderSportsCenterDirectory();
+  const zones = state.territoryLayer==='sectors' ? state.censusTerritoryZones : state.territoryZones.filter(z=>!z.aliasOnly||neighborhoodKey(z.name)===neighborhoodKey(state.selectedNeighborhood));
   renderTerritoryFilter(zones);
-  const visibleZones = filteredTerritoryZones(zones);
+  const selectedLocality=state.neighborhoodDirectory?.neighborhoods.find(n=>neighborhoodKey(n.name)===neighborhoodKey(state.selectedNeighborhood));
+  const selectedCodes=new Set(selectedLocality?.sectorCodes||[]);
+  const primaryNeighborhood=zones.filter(z=>neighborhoodKey(z.name)===neighborhoodKey(state.selectedNeighborhood));
+  const visibleZones = state.selectedNeighborhood && state.territoryLayer!=='sectors' ? (primaryNeighborhood.length?primaryNeighborhood:(state.censusTerritoryZones||[]).filter(z=>selectedCodes.has(z.sectorCode))) : filteredTerritoryZones(zones).filter(z=>state.selectedNeighborhood ? selectedCodes.has(z.sectorCode) : (!state.selectedTerritoryZoneId||z.id===state.selectedTerritoryZoneId));
   const counts = territoryStudentsByZone();
   const classified = Object.values(counts).reduce((sum, value) => sum + value, 0);
   const loaded = loadedStudents().length;
   const neighborhoods = new Set(loadedStudents().map((student) => censoText(student.neighborhood)).filter(Boolean));
   const sourceLabels = [...new Set(zones.map((zone) => zone.sourceVersion).filter(Boolean))];
   ui["territory-summary"].innerHTML = [
-    ["Setores no mapa", zones.length, zones.length ? "camada preliminar local" : "arquivo local indisponível"],
+    [state.territoryLayer==="sectors"?"Polígonos de origem":"Áreas por bairro", zones.length, "76 agrupamentos • 215 polígonos de origem"],
     ["Cadastros por zona", classified, loaded ? `de ${loaded} aluno${loaded === 1 ? "" : "s"} carregado${loaded === 1 ? "" : "s"}` : "nenhum aluno carregado"],
-    ["Bairros no censo", neighborhoods.size, neighborhoods.size ? "contagem agregada no painel" : "aguardando bairro no cadastro"],
-    ["Fonte territorial", sourceLabels.length ? "Preliminar" : "Pendente", sourceLabels.length ? "aproximação; não é limite oficial" : "sem geometria publicada"]
+    ["Localidades identificadas", state.neighborhoodDirectory?.neighborhoods.length||0, "IBGE CNEFE 2022 • diretório completo"],
+    ["Referência dos bairros", "CNEFE 2022", "agrupamento por localidade predominante"]
   ].map(([label, value, note]) => `<article class="panel stat-card territory-stat"><div class="stat-label"><span>${escapeHtml(String(label))}</span><i class="stat-icon" aria-hidden="true">⌖</i></div><strong>${escapeHtml(String(value))}</strong><small>${escapeHtml(String(note))}</small></article>`).join("");
-  ui["territory-layer-status"].textContent = zones.length ? `${visibleZones.length}/${zones.length} setores` : "Sem camada";
+  ui["territory-layer-status"].textContent = zones.length ? `${visibleZones.length}/${zones.length} ${state.territoryLayer==="sectors"?"polígonos":"áreas por bairro"}` : "Sem camada";
   ui["territory-layer-status"].classList.toggle("inactive", !zones.length);
   ui["territory-map"].innerHTML = renderTerritoryMap(visibleZones, counts);
   mountOfficialTerritoryMap(visibleZones, counts);
@@ -424,12 +445,12 @@ function renderTerritory() {
     const classCount = classesForTerritoryZone(zone).length;
     const selected = zone.id === state.selectedTerritoryZoneId;
     return `<button class="territory-zone-row ${selected ? "selected" : ""}" data-action="select-territory-zone" data-id="${escapeAttr(zone.id)}" type="button"><span class="zone-swatch" aria-hidden="true"></span><span><strong>${escapeHtml(zone.name || "Zona sem nome")}</strong><small>${escapeHtml(zone.sector || "Setor não informado")} · ${classCount} núcleo${classCount === 1 ? "" : "s"}</small></span><b>${count}</b></button>`;
-  }).join("") : `<div class="territory-empty"><span aria-hidden="true">⌖</span><strong>Nenhum setor neste filtro</strong><p>Selecione “Todos os setores” para visualizar a camada preliminar completa.</p></div>`;
+  }).join("") : `<div class="territory-empty"><span aria-hidden="true">⌖</span><strong>Nenhum setor neste filtro</strong><p>Selecione “Todos os setores” para visualizar a camada territorial completa.</p></div>`;
 }
 
 function renderTerritoryMap(zones, counts) {
   const usingGoogle = Boolean(window.GOOGLE_MAPS_CONFIG?.apiKey);
-  return `<div id="official-territory-map" class="official-territory-map" aria-label="Mapa de Votorantim com contorno ilustrativo não oficial"></div><p class="territory-map-credit">Contorno territorial do pacote: ILUSTRATIVO, sem precisão ou origem oficial comprovada · Base: ${usingGoogle ? "Google Maps Platform" : "© OpenStreetMap contributors"}. Setores só aparecem após importação aprovada.</p>`;
+  return `<div id="official-territory-map" class="official-territory-map" aria-label="Mapa de bairros de referência de Votorantim"></div><p class="territory-map-credit">Bairros de referência: setores IBGE agrupados por localidade predominante no CNEFE 2022 • não são perímetros legais · Base: ${usingGoogle ? "Google Maps Platform" : "© OpenStreetMap contributors"}. Setores censitários do Censo 2022.</p>`;
 }
 
 async function mountOfficialTerritoryMap(zones, counts) {
@@ -440,9 +461,11 @@ async function mountOfficialTerritoryMap(zones, counts) {
   state.googleTerritoryMap = null;
   target.replaceChildren();
   try {
-    const response = await fetch("data/votorantim-contorno-ilustrativo.geojson", { cache: "force-cache" });
+    const response = await fetch("data/votorantim-limite-municipal-oficial.geojson", { cache: "force-cache" });
     if (!response.ok) throw new Error("Limite municipal indisponível");
     const boundary = await response.json();
+    state.municipalBoundary=boundary;
+    if (!target.isConnected) return;
     if (window.GOOGLE_MAPS_CONFIG?.apiKey) {
       try {
         await loadGoogleMaps(window.GOOGLE_MAPS_CONFIG);
@@ -458,19 +481,24 @@ async function mountOfficialTerritoryMap(zones, counts) {
     window.L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", { maxZoom: 19, attribution: "© OpenStreetMap contributors" }).addTo(map);
     const boundaryLayer = window.L.geoJSON(boundary, {
       style: { color: "#063b79", weight: 3, fillColor: "#2f94bf", fillOpacity: 0.07 },
-      onEachFeature: (_, layer) => layer.bindTooltip("Contorno ilustrativo de Votorantim — não oficial", { sticky: true })
+      onEachFeature: (_, layer) => layer.bindTooltip("Votorantim • limite municipal IBGE", { sticky: true })
     }).addTo(map);
     map.fitBounds(boundaryLayer.getBounds(), { padding: [16, 16] });
+    mountSportsCentersLeaflet(map);
+    if(state.mapExtent!=="municipality"&&!state.selectedNeighborhood&&!state.selectedTerritoryZoneId){const centers=visibleSportsCenters();if(centers.length>1)map.fitBounds(window.L.latLngBounds(centers.map(c=>[c.latitude,c.longitude])),{padding:[38,38],maxZoom:14});}
     zones.filter((zone) => geometryPoints(zone.geometry).length).forEach((zone) => {
       const total = counts[zone.id] || 0;
-      const selected = zone.id === state.selectedTerritoryZoneId;
+      const selected = zone.id === state.selectedTerritoryZoneId || neighborhoodKey(zone.name)===neighborhoodKey(state.selectedNeighborhood);
+      const palette=['#187d88','#4267a5','#738c4e','#a27835','#8c6591','#417f71'];
+      const color=palette[[...zone.name].reduce((v,c)=>v+c.charCodeAt(0),0)%palette.length];
       const layer = window.L.geoJSON({ type: "Feature", properties: {}, geometry: zone.geometry }, {
-        style: { color: selected ? "#9e1f2a" : "#1268b2", weight: selected ? 3 : 2, fillColor: selected ? "#c62d37" : "#2f94bf", fillOpacity: selected ? 0.38 : 0.22 }
+        style: { color: selected ? "#9e1f2a" : color, weight: selected ? 3 : 1.4, fillColor: selected ? "#c62d37" : color, fillOpacity: selected ? 0.33 : 0.18 }
       }).addTo(map);
       layer.bindTooltip(`${zone.name || "Zona"} · ${total} cadastro${total === 1 ? "" : "s"}`, { sticky: true });
       layer.bindPopup(territoryZonePopup(zone, total), { maxWidth: 360 });
       layer.on("click", () => selectTerritoryZoneFromMap(zone.id));
     });
+    if ((state.selectedNeighborhood || state.selectedTerritoryZoneId) && zones.length) { const focus=window.L.geoJSON({type:"FeatureCollection",features:zones.map(z=>({type:"Feature",properties:{},geometry:z.geometry}))});map.fitBounds(focus.getBounds(),{padding:[28,28],maxZoom:15}); }
   } catch (error) {
     console.error("Falha ao carregar a geometria ilustrativa", error);
     target.innerHTML = `<div class="territory-map-empty"><span aria-hidden="true">!</span><h4>Mapa não disponível</h4><p>Verifique os dados territoriais e a conexão com a base cartográfica.</p></div>`;
@@ -503,6 +531,7 @@ function mountGoogleTerritoryMap(target, boundary, zones, counts) {
     streetViewControl: false, fullscreenControl: true, mapTypeControl: true
   });
   state.googleTerritoryMap = map;
+  mountSportsCentersGoogle(map, maps);
   const features = [{ type: "Feature", properties: { appLayer: "municipal" }, geometry: boundary.features?.[0]?.geometry }, ...zones.filter((zone) => geometryPoints(zone.geometry).length).map((zone) => ({ type: "Feature", properties: { appLayer: "zone", zoneId: zone.id, zoneName: zone.name || "Zona", total: counts[zone.id] || 0, popup: territoryZonePopup(zone, counts[zone.id] || 0) }, geometry: zone.geometry }))].filter((feature) => feature.geometry);
   map.data.addGeoJson({ type: "FeatureCollection", features });
   map.data.setStyle((feature) => {
@@ -522,6 +551,8 @@ function mountGoogleTerritoryMap(target, boundary, zones, counts) {
     const bounds = new maps.LatLngBounds();
     points.forEach(([longitude, latitude]) => bounds.extend({ lat: Number(latitude), lng: Number(longitude) }));
     map.fitBounds(bounds, 18);
+    if(state.selectedNeighborhood&&zones.length){const focus=new maps.LatLngBounds();zones.flatMap(z=>geometryPoints(z.geometry)).forEach(([lng,lat])=>focus.extend({lat,lng}));map.fitBounds(focus,28);}
+    else if(state.mapExtent!=="municipality"){const centers=visibleSportsCenters();if(centers.length>1){const focus=new maps.LatLngBounds();centers.forEach(c=>focus.extend({lat:c.latitude,lng:c.longitude}));map.fitBounds(focus,38);}}
   }
 }
 
@@ -668,7 +699,7 @@ async function loadHistory(classId) {
 let censoDashboardBairro = "";
 function censoText(value) { return String(value ?? "").trim(); }
 function censoKey(value) { return censoText(value).normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLocaleLowerCase("pt-BR").replace(/\s+/g, " "); }
-function censoPersonKey(student) { const name = censoKey(student.fullName || student.name); const birth = censoText(student.birthDate); return name ? `${name}|${birth}` : ""; }
+function censoPersonKey(student) { if(student.globalStudentId) return student.globalStudentId; const name = censoKey(student.fullName || student.name); const birth = censoText(student.birthDate); return name ? `${name}|${birth}` : ""; }
 function censoUnique(rows) { const found = new Set(); return rows.filter(({student}) => { const key = censoPersonKey(student); if (!key || found.has(key)) return false; found.add(key); return true; }); }
 function censoAge(student) { const birth = censoText(student.birthDate); if (!/^\d{4}-\d{2}-\d{2}$/.test(birth)) return null; const date = new Date(`${birth}T12:00:00`); if (Number.isNaN(date.getTime())) return null; const now = new Date(); let age = now.getFullYear() - date.getFullYear(); if (now.getMonth() < date.getMonth() || (now.getMonth() === date.getMonth() && now.getDate() < date.getDate())) age--; return age >= 0 && age <= 120 ? age : null; }
 function censoPlot(target, entries, total, empty) {
@@ -736,8 +767,8 @@ function renderClassDetail(classItem) {
   const students = state.studentsByClass[classItem.id] || [];
   const history = state.histories[classItem.id] || [];
   const studentContent = students.length
-    ? `<div class="student-table-wrap"><table class="student-table"><thead><tr><th>Aluno</th><th>Matrícula</th><th>Responsável</th><th>Território</th><th>Situação</th><th>Contato</th><th aria-label="Ações"></th></tr></thead><tbody>${students.map((student) => `
-      <tr><td><div class="student-name"><span class="student-initial">${initials(student.preferredName || student.fullName)}</span><span>${escapeHtml(student.preferredName || student.fullName || "Sem nome")}</span></div></td><td>${escapeHtml(student.enrollmentCode || "—")}</td><td>${escapeHtml(student.guardianName || "—")}</td><td>${renderTerritoryPill(student)}</td><td><span class="pill">${escapeHtml(student.enrollmentStatus || "Ativa")}</span></td><td>${renderContactActions(student, classItem.id)}</td><td><div class="row-actions"><button class="row-action" data-action="toggle-student" data-id="${escapeAttr(student.id)}" data-class-id="${escapeAttr(classItem.id)}" type="button">${studentIsActive(student) ? "Desativar" : "Ativar"}</button><button class="row-action" data-action="edit-student" data-id="${escapeAttr(student.id)}" data-class-id="${escapeAttr(classItem.id)}" type="button">Editar</button>${state.isAdmin ? `<button class="row-action danger" data-action="delete-student" data-id="${escapeAttr(student.id)}" data-class-id="${escapeAttr(classItem.id)}" type="button">Excluir</button>` : ""}</div></td></tr>`).join("")}</tbody></table></div>`
+    ? `<div class="student-table-wrap"><table class="student-table"><thead><tr><th>Aluno</th><th>Aluno ID</th><th>Matrícula</th><th>Responsável</th><th>Território</th><th>Situação</th><th>Contato</th><th aria-label="Ações"></th></tr></thead><tbody>${students.map((student) => `
+      <tr><td><div class="student-name"><span class="student-initial">${initials(student.preferredName || student.fullName)}</span><span>${escapeHtml(student.preferredName || student.fullName || "Sem nome")}</span></div></td><td><strong>${escapeHtml(student.globalStudentId || "ID pendente")}</strong></td><td>${escapeHtml(student.enrollmentCode || "—")}</td><td>${escapeHtml(student.guardianName || "—")}</td><td>${renderTerritoryPill(student)}</td><td><span class="pill">${escapeHtml(student.enrollmentStatus || "Ativa")}</span></td><td>${renderContactActions(student, classItem.id)}</td><td><div class="row-actions"><button class="row-action" data-action="toggle-student" data-id="${escapeAttr(student.id)}" data-class-id="${escapeAttr(classItem.id)}" type="button">${studentIsActive(student) ? "Desativar" : "Ativar"}</button><button class="row-action" data-action="edit-student" data-id="${escapeAttr(student.id)}" data-class-id="${escapeAttr(classItem.id)}" type="button">Editar</button>${state.isAdmin ? `<button class="row-action danger" data-action="delete-student" data-id="${escapeAttr(student.id)}" data-class-id="${escapeAttr(classItem.id)}" type="button">Excluir</button>` : ""}</div></td></tr>`).join("")}</tbody></table></div>`
     : `<div class="empty-state"><span aria-hidden="true">+</span><h3>Lista vazia, por enquanto</h3><p>Cadastre um aluno por vez ou importe uma planilha CSV revisada.</p><button class="button button-secondary" data-action="open-student-dialog" data-class-id="${escapeAttr(classItem.id)}" type="button">Cadastrar aluno</button></div>`;
   const historyContent = history.length ? `<div class="history-list">${history.map((entry) => {
     const marked = Number(entry.markedCount || countMarked(entry.records));
@@ -880,12 +911,18 @@ function openStudentDialog(classId, studentId = "") {
   if (!requireProfile()) return;
   const form = ui["student-form"];
   form.reset();
+  document.getElementById('find-existing-student').hidden=true;
+  state.lastPostalLookup='';state.postalRequestId=(state.postalRequestId||0)+1;
+  document.getElementById('postal-neighborhood-choice').hidden=true;
+  ui['postal-code-help'].textContent='O CEP identifica o bairro e sugere a zona automaticamente.';
+  ui['lookup-postal-code'].disabled=false;
   form.elements.classId.value = classId;
   form.elements.studentId.value = studentId;
   const student = (state.studentsByClass[classId] || []).find((item) => item.id === studentId);
   populateTerritoryZoneOptions(student?.territoryZoneId || student?.geo?.zoneId || "");
   if (student) {
     ui["student-dialog-title"].textContent = "Editar aluno";
+    form.elements.territoryMatchMethod.value=student.geo?.matchMethod||"manual-zone-selection";
     Object.entries(student).forEach(([key, value]) => {
       if (form.elements[key] && typeof value === "string") form.elements[key].value = value;
     });
@@ -903,6 +940,10 @@ function openStudentDialog(classId, studentId = "") {
   if (classDisplay) classDisplay.value = state.classes.find((item) => item.id === classId)?.name || classId || "";
   setFormMessage("student-form-message", "");
   showDialog("student-dialog");
+  if(state.isAdmin) readRegistry().then(rows=>{
+    const master=student?.globalStudentId?rows.find(r=>r.globalStudentId===student.globalStudentId):null;
+    if(master&&form.elements.studentId.value===studentId&&form.elements.fullName.value===student.fullName&&form.elements.birthDate.value===(student.birthDate||'')){form.elements.fullName.value=master.fullName;form.elements.birthDate.value=master.birthDate||'';updateStudentAgePreview();}
+    document.getElementById("registry-id-options").innerHTML=rows.map(s=>`<option value="${escapeAttr(s.globalStudentId)}">${escapeHtml(s.fullName)}${s.birthDate?" • "+formatDate(s.birthDate):""}</option>`).join("");}).catch(e=>toast(e.message,"error"));
 }
 
 async function saveStudent(event) {
@@ -1277,28 +1318,27 @@ function removeTourHighlight() {
 }
 
 async function lookupPostalCode() {
-  const form = ui["student-form"];
-  const postalCode = String(form.elements.postalCode?.value || "").replace(/\D/g, "");
-  const helper = ui["postal-code-help"];
-  if (postalCode.length !== 8) {
-    helper.textContent = "Informe os 8 dígitos do CEP para receber uma sugestão de bairro.";
-    return;
-  }
-  helper.textContent = "Consultando o CEP…";
+  const form=ui['student-form'], helper=ui['postal-code-help'];
+  const postalCode=String(form.elements.postalCode.value||'').replace(/\D/g,'');
+  if(postalCode.length!==8){helper.textContent='Informe os 8 dígitos do CEP.';return;}
+  const requestId=(state.postalRequestId||0)+1;state.postalRequestId=requestId;
+  const button=ui['lookup-postal-code'];button.disabled=true;helper.textContent='Buscando endereço, bairro e zona…';
+  const choice=document.getElementById('postal-neighborhood-choice');choice.hidden=true;choice.replaceChildren();
   try {
-    const response = await fetch(`https://viacep.com.br/ws/${postalCode}/json/`);
-    if (!response.ok) throw new Error("Consulta indisponível");
-    const result = await response.json();
-    if (result.erro) throw new Error("CEP não encontrado");
-    const suggestions = { street: result.logradouro, neighborhood: result.bairro, city: result.localidade, state: result.uf };
-    Object.entries(suggestions).forEach(([key, value]) => {
-      if (value && form.elements[key] && !String(form.elements[key].value || "").trim()) form.elements[key].value = value;
-    });
-    form.elements.postalCode.value = formatPostalCode(postalCode);
-    helper.textContent = result.bairro ? `Bairro sugerido: ${result.bairro}. Confira com a referência territorial antes de salvar.` : "CEP localizado, sem bairro informado pela fonte.";
-  } catch (error) {
-    helper.textContent = "Não foi possível consultar este CEP. Informe o bairro manualmente.";
-  }
+    let result=null;
+    try {const response=await fetch('https://viacep.com.br/ws/'+postalCode+'/json/',{signal:AbortSignal.timeout(10000)});if(response.ok){const data=await response.json();if(!data.erro)result=data;}}catch{}
+    if(requestId!==state.postalRequestId||String(form.elements.postalCode.value).replace(/\D/g,'')!==postalCode)return;
+    if(result){for(const [field,value]of Object.entries({street:result.logradouro,city:result.localidade,state:result.uf}))if(value)form.elements[field].value=value;}
+    const assignment=resolvePostalTerritory(postalCode,result?.bairro||'',result?.ibge||'');
+    form.elements.postalCode.value=formatPostalCode(postalCode);
+    if(assignment.zone){applyPostalTerritory(form,assignment.neighborhood,assignment.zone,'cep-cnefe-2022');helper.textContent='Bairro: '+assignment.neighborhood+' • zona vinculada: '+assignment.zone.name+'. Confira o endereço antes de salvar.';}
+    else {
+      form.elements.territoryZoneId.value='';form.elements.territoryMatchMethod.value='not-classified';syncTerritoryFields(form);
+      if(result?.bairro)form.elements.neighborhood.value=result.bairro;
+      if(assignment.candidates.length){choice.add(new Option('Selecione o bairro para confirmar a zona',''));assignment.candidates.forEach(name=>choice.add(new Option(name,name)));choice.hidden=false;helper.textContent='Este CEP tem mais de uma referência de bairro. Selecione o bairro correto para vincular a zona.';}
+      else helper.textContent=assignment.outside?'CEP de outro município: nenhuma zona de Votorantim foi vinculada.':result?'Endereço localizado. Selecione o bairro ou a zona manualmente; não há correspondência segura na base.':'CEP não localizado na consulta ou na base local. Informe o endereço e a zona manualmente.';
+    }
+  }finally{if(requestId===state.postalRequestId)button.disabled=false;}
 }
 
 function requireProfile() {
@@ -1405,24 +1445,7 @@ const repository = {
   getDemoTerritoryZones() {
     return Object.entries(demoData().territoryZones || {}).map(([id, row]) => ({ id, ...row })).sort((a, b) => String(a.name || "").localeCompare(String(b.name || ""), "pt-BR"));
   },
-  async saveStudent(values) {
-    const { classId, studentId, ...fields } = values;
-    const payload = buildStudentPayload(fields, state.isDemo ? new Date().toISOString() : serverTimestamp());
-    if (state.isDemo) {
-      const data = demoData();
-      const id = studentId || createId();
-      data.students[classId] ||= {};
-      data.students[classId][id] = { ...(data.students[classId][id] || {}), ...payload, createdAt: data.students[classId][id]?.createdAt || new Date().toISOString() };
-      writeDemoData(data);
-      if (state.selectedClassId === classId) observeSelectedStudents(classId); else state.studentsByClass[classId] = this.getDemoStudents(classId);
-      await assignEnrollmentCode(classId,id);
-      return id;
-    }
-    const ref = studentId ? doc(firebase.db, "classes", classId, "students", studentId) : doc(collection(firebase.db, "classes", classId, "students"));
-    await setDoc(ref, { ...payload, ...(studentId ? {} : { createdAt: serverTimestamp() }) }, { merge: Boolean(studentId) });
-    await assignEnrollmentCode(classId,ref.id);
-    return ref.id;
-  },
+  async saveStudent(values) { return saveRegisteredStudent(values); },
   async deleteClassAsAdmin(classId) {
     if (!state.isAdmin) throw new Error("A exclusão de turmas é exclusiva do administrador.");
     if (state.isDemo) {
@@ -1485,6 +1508,7 @@ const repository = {
       });
       writeDemoData(data);
       subscribeTerritoryZones();
+    subscribeSportsCenters();
       return;
     }
     const batch = writeBatch(firebase.db);
@@ -1519,27 +1543,14 @@ const repository = {
     return snapshot.docs.map((item) => ({ id: item.id, ...item.data() }));
   },
   async importStudents(classId, rows) {
-    if (state.isDemo) {
-      const data = demoData();
-      data.students[classId] ||= {};
-      rows.forEach((row) => {
-        const id = row.enrollmentCode ? `m-${safeId(row.enrollmentCode)}` : createId();
-        data.students[classId][id] = { ...(data.students[classId][id] || {}), ...buildStudentPayload(row, new Date().toISOString()), createdAt: data.students[classId][id]?.createdAt || new Date().toISOString() };
-      });
-      writeDemoData(data);
-      for (const s of this.getDemoStudents(classId).filter(s=>!s.enrollmentCode)) await assignEnrollmentCode(classId,s.id);
-      if (state.selectedClassId === classId) observeSelectedStudents(classId);
-      return;
+    for (const row of rows) {
+      const existing = await loadStudents(classId);
+      const matches = existing.filter(s => row.enrollmentCode ? s.enrollmentCode === row.enrollmentCode : row.globalStudentId ? s.globalStudentId === row.globalStudentId : censoKey(s.fullName) === censoKey(row.fullName) && (s.birthDate||"") === (row.birthDate||""));
+      if(matches.length > 1) throw new Error('Há homônimos na turma. Informe aluno_id e matricula_codigo para identificar o vínculo.');
+      await this.saveStudent({ ...row, classId, studentId: matches[0]?.id || '' });
     }
-    // Firestore batch writes cap at 500. The interface limits each file to 400 rows.
-    const batch = writeBatch(firebase.db);
-    rows.forEach((row) => {
-      const id = row.enrollmentCode ? `m-${safeId(row.enrollmentCode)}` : createId();
-      batch.set(doc(firebase.db, "classes", classId, "students", id), { ...buildStudentPayload(row, serverTimestamp()), createdAt: serverTimestamp() }, { merge: true });
-    });
-    await batch.commit();
-    const imported = await loadStudents(classId);
-    for (const s of imported.filter(s=>!s.enrollmentCode)) await assignEnrollmentCode(classId,s.id);
+    await loadStudents(classId);
+    if (state.selectedClassId === classId) observeSelectedStudents(classId);
   }
 };
 
@@ -1559,7 +1570,7 @@ function writeDemoData(data) {
 
 // Allowlist shared by individual registration and CSV import. Never persist UI-only keys.
 const STUDENT_ALLOWED_FIELDS = new Set([
-  "fullName", "preferredName", "enrollmentCode", "birthDate", "gender",
+  "territoryMatchMethod", "globalStudentId", "fullName", "preferredName", "enrollmentCode", "birthDate", "gender",
   "guardianName", "guardianPhone", "studentPhone", "phone", "guardianEmail",
   "contactTarget", "contactPermission", "contactConsentDate", "postalCode",
   "state", "street", "number", "complement", "neighborhood", "city",
@@ -1606,7 +1617,9 @@ function updateStudentAgePreview() {
 ui["student-form"]?.elements.birthDate?.addEventListener("input", updateStudentAgePreview);
 
 function buildStudentPayload(fields, timestamp) {
-  const requestedZoneId = fields.territoryZoneId || fields.geo?.zoneId || "";
+  const automatic=(!fields.territoryZoneId&&!fields.geo?.zoneId)?resolvePostalTerritory(fields.postalCode,fields.neighborhood):null;
+  const requestedZoneId = fields.territoryZoneId || fields.geo?.zoneId || automatic?.zone?.id || "";
+  if(automatic?.zone)fields={...fields,neighborhood:automatic.neighborhood,territoryMatchMethod:"cep-cnefe-2022"};
   const requestedZoneName = fields.territoryZoneName || fields.geo?.zoneLabel || "";
   const zone = state.territoryZones.find((item) => item.id === requestedZoneId) || state.territoryZones.find((item) => comparableText(item.name) === comparableText(requestedZoneName));
   const zoneId = zone?.id || requestedZoneId;
@@ -1648,7 +1661,7 @@ function buildStudentPayload(fields, timestamp) {
       zoneLabel: territoryZoneName,
       sector: territorySector,
       sourceVersion: territorySource,
-      matchMethod: zone ? "manual-zone-selection" : (fields.geo?.matchMethod || "not-classified")
+      matchMethod: zone ? (fields.territoryMatchMethod || fields.geo?.matchMethod || "manual-zone-selection") : "not-classified"
     },
     updatedAt: timestamp
   };
@@ -1682,7 +1695,7 @@ function normalizeCsvRows(rows) {
     nome_completo: "fullName", nome: "fullName", full_name: "fullName",
     pcd: "pcdStatus", pessoa_com_deficiencia: "pcdStatus", data_cadastro: "registrationDate",
     nome_social: "preferredName", nome_preferido: "preferredName",
-    matricula_codigo: "enrollmentCode", codigo_matricula: "enrollmentCode", matricula: "enrollmentCode",
+    aluno_id: "globalStudentId", id_aluno: "globalStudentId", matricula_codigo: "enrollmentCode", codigo_matricula: "enrollmentCode", matricula: "enrollmentCode",
     data_nascimento: "birthDate", nascimento: "birthDate",
     genero: "gender", sexo: "gender",
     responsavel_nome: "guardianName", nome_responsavel: "guardianName",
@@ -1707,7 +1720,7 @@ function normalizeCsvRows(rows) {
     observacoes: "notes", observacao: "notes"
   };
   const maxLength = {
-    fullName: 120, preferredName: 120, enrollmentCode: 80, birthDate: 10, gender: 40, pcdStatus: 3, registrationDate: 10,
+    globalStudentId: 30, fullName: 120, preferredName: 120, enrollmentCode: 80, birthDate: 10, gender: 40, pcdStatus: 3, registrationDate: 10,
     guardianName: 120, guardianPhone: 20, studentPhone: 20, phone: 20, guardianEmail: 120,
     contactTarget: 20, contactPermission: 30, contactConsentDate: 10,
     postalCode: 10, street: 140, number: 20, complement: 80, neighborhood: 100,
@@ -1781,6 +1794,7 @@ function isFirebaseConfigured(config) {
 }
 
 function friendlyFirebaseError(error) {
+  if(!error?.code && error?.message)return error.message;
   const code = error?.code || "";
   const messages = {
     "auth/popup-closed-by-user": "A janela de acesso foi fechada antes da conclusão.",
@@ -2161,6 +2175,7 @@ async function prepareWorkspace() {
     ui.workspace?.classList.remove("hidden");
     ui["mode-badge"]?.classList.toggle("hidden", !state.isDemo);
     ui["admin-nav"]?.classList.toggle("hidden", !state.isAdmin);
+    document.getElementById("registry-nav").classList.toggle("hidden", !state.isAdmin);
     ui["open-territory-import"]?.classList.toggle("hidden", !state.isAdmin);
     updateProfileUi();
     setActiveView("dashboard", { preserveScroll: true });
@@ -2182,6 +2197,7 @@ async function prepareWorkspace() {
 }
 
 function clearWorkspaceState() {
+  registryRows=[]; state.activityCatalogue=[]; state.selectedNeighborhood="";
   stopSubscriptions();
   state.profile = null;
   state.user = null;
@@ -2240,7 +2256,7 @@ function setAuthBusy(busy) {
 }
 
 function setActiveView(view, { preserveScroll = false } = {}) {
-  if (view === "admin" && !state.isAdmin) view = "dashboard";
+  if (["admin","students"].includes(view) && !state.isAdmin) view = "dashboard";
   state.activeView = view;
   $$(".view").forEach((section) => section.classList.toggle("active", section.id === `view-${view}`));
   $$(".nav-item[data-view]").forEach((button) => button.classList.toggle("active", button.dataset.view === view));
@@ -2253,10 +2269,12 @@ function setActiveView(view, { preserveScroll = false } = {}) {
   if (view === "classes") ensureClassSelection();
   if (view === "attendance") ensureAttendanceReady();
   if (view === "admin") renderAdmin();
-  if (view === "territory") { renderTerritory(); renderTerritoryLinks(); }
+  if (view === "territory") { renderTerritory(); renderTerritoryLinks(); renderNeighborhoodDirectory().catch(e=>toast(e.message,"error")); }
   if (view === "occurrences") renderOccurrences();
   if (view === "modalities") renderModalities();
   if (view === "settings") renderSettings();
+  if (view === "students") renderStudentRegistry().catch(e=>toast("Base geral indisponível. Verifique se as regras Firestore V11 foram publicadas. "+friendlyFirebaseError(e),"error"));
+  if (view === "reports") syncReportControls();
 }
 
 function subscribeUsers() {
@@ -2285,7 +2303,7 @@ function subscribeOccurrences() {
     return;
   }
   const source = collection(firebase.db, "occurrences");
-  const occurrenceQuery = state.isAdmin ? query(source, limit(80)) : query(source, where("teacherId", "==", state.user.uid), limit(80));
+  const occurrenceQuery = state.isAdmin ? query(source, orderBy("date", "desc"), limit(80)) : query(source, where("teacherId", "==", state.user.uid), orderBy("date", "desc"), limit(80));
   state.unsubscribers.occurrences = onSnapshot(occurrenceQuery, (snapshot) => {
     state.occurrences = snapshot.docs.map((item) => ({ id: item.id, ...item.data() }))
       .sort((a, b) => `${b.date || ""}T${b.time || "00:00"}`.localeCompare(`${a.date || ""}T${a.time || "00:00"}`));
@@ -2295,6 +2313,7 @@ function subscribeOccurrences() {
 }
 
 function afterClassesChanged() {
+  syncActivityCatalogue().catch(error=>console.warn("Catálogo: publique as regras V11 no Firebase.",error));
   if (state.selectedClassId && !state.classes.some((item) => item.id === state.selectedClassId)) {
     state.selectedClassId = null;
   }
@@ -2379,7 +2398,7 @@ function renderDashboard() {
 
   const seen = new Set();
   Object.values(state.studentsByClass).flat().forEach((student) => {
-    const key = [String(student.fullName || "").trim().toLocaleLowerCase("pt-BR"), student.birthDate || ""].join("|");
+    const key = student.globalStudentId || [String(student.fullName || "").trim().toLocaleLowerCase("pt-BR"), student.birthDate || ""].join("|");
     if (key !== "|") seen.add(key);
   });
   const uniqueParticipants = seen.size;
@@ -2397,7 +2416,7 @@ function renderDashboard() {
     ["Faltas justificadas", justified || "—", justified ? "marcadas no período" : "sem justificativas salvas", "J"],
     ["Ocorrências do mês", monthOccurrences || "—", monthOccurrences ? "registros operacionais" : "nenhuma ocorrência", "⚑"],
     ["Na última chamada", latestAttendance ? latestPresent : "—", latestAttendance ? `${formatDate(latestAttendance.date)}${latestAttendance.sessionTime ? ` às ${latestAttendance.sessionTime}` : ""}` : "aguardando primeira chamada", "◉"]
-  ].map(([label, value, note, icon]) => `<article class="panel stat-card"><div class="stat-label"><span>${label}</span><i class="stat-icon" aria-hidden="true">${icon}</i></div><strong>${value}</strong><small>${note}</small></article>`).join("");
+  ].map(([label, value, note, icon], index) => `<article class="panel stat-card interactive-stat" tabindex="0" role="button" data-v11="indicator" data-index="${index}" aria-label="Explorar ${label}"><div class="stat-label"><span>${label}</span><i class="stat-icon" aria-hidden="true">${icon}</i></div><strong>${value}</strong><small>${note}</small></article>`).join("");
 
   if (!state.classes.length) {
     ui["today-classes"].innerHTML = emptyInline("Nenhuma turma cadastrada", "Cadastre sua primeira turma para criar listas e chamadas.", "Cadastrar turma", "open-class-dialog");
@@ -2473,7 +2492,7 @@ function renderAttendance() {
     const record = records[student.id] || {};
     const status = record.status || "";
     const rowClass = status === "P" ? "has-present" : status === "F" ? "has-absent" : status === "J" ? "has-justified" : "";
-    const context = [student.enrollmentCode || "Sem código de matrícula", student.territoryZoneName || student.geo?.zoneLabel].filter(Boolean).join(" · ");
+    const context = [student.globalStudentId || "ID pendente", student.enrollmentCode || "Sem código de matrícula", student.territoryZoneName || student.geo?.zoneLabel].filter(Boolean).join(" · ");
     return `<div class="attendance-row ${rowClass}"><div class="attendance-person"><span class="student-initial">${initials(student.preferredName || student.fullName)}</span><div><strong>${escapeHtml(student.preferredName || student.fullName || "Sem nome")}</strong><small>${escapeHtml(context)}</small></div></div><div class="attendance-note">${renderJustificationSelect(student, record)}</div><div class="attendance-actions"><button class="attendance-status present ${status === "P" ? "active" : ""}" data-action="set-attendance" data-id="${escapeAttr(student.id)}" data-status="P" type="button" aria-pressed="${status === "P"}">P</button><button class="attendance-status justified ${status === "J" ? "active" : ""}" data-action="set-attendance" data-id="${escapeAttr(student.id)}" data-status="J" type="button" aria-pressed="${status === "J"}">J</button><button class="attendance-status absent ${status === "F" ? "active" : ""}" data-action="set-attendance" data-id="${escapeAttr(student.id)}" data-status="F" type="button" aria-pressed="${status === "F"}">F</button></div></div>`;
   }).join("")}` : `<div class="empty-state"><span aria-hidden="true">+</span><h3>Inclua alunos nesta turma</h3><p>Sem alunos não é possível registrar uma chamada.</p><button class="button button-secondary" data-action="open-student-dialog" data-class-id="${escapeAttr(classId)}" type="button">Cadastrar aluno</button></div>`;
 }
@@ -2667,7 +2686,7 @@ function renderModalities() {
   const groups = new Map();
   const centers = new Set();
   const q = String(ui["modalities-filter"]?.value || "").trim().toLocaleLowerCase("pt-BR");
-  state.classes.forEach((item) => {
+  (state.activityCatalogue || state.classes).forEach((item) => {
     const sport = item.sport || "Modalidade não informada";
     const loc = item.location || "Núcleo sem nome";
     centers.add(loc);
@@ -2676,21 +2695,27 @@ function renderModalities() {
   });
   const sorted = [...groups].sort((a,b) => a[0].localeCompare(b[0], "pt-BR"));
   const filtered = sorted.filter(([sport, rows]) => !q || [sport,...rows.map(r=>r.location),...rows.map(r=>r.name)].join(" ").toLocaleLowerCase("pt-BR").includes(q));
-  const stats = [["Modalidades", sorted.length],["Núcleos distintos", centers.size],["Turmas", state.classes.length]];
+  const stats = [["Modalidades", sorted.length],["Núcleos distintos", centers.size],["Turmas", (state.activityCatalogue || state.classes).length]];
   ui["modalities-stats"].innerHTML = stats.map(([name, val]) => `<article class="panel stat-card"><div class="stat-label"><span>${escapeHtml(name)}</span><i class="stat-icon">◆</i></div><strong>${val}</strong><small>registros disponíveis ao seu perfil</small></article>`).join("");
   ui["modalities-content"].innerHTML = filtered.length ? filtered.map(([name, rows]) => {
     const places = new Set(rows.map(r=>r.location).filter(Boolean));
     return `<article class="modality-card"><div class="modality-heading"><h4>${escapeHtml(name)}</h4><span class="pill">${rows.length} turma${rows.length === 1 ? "" : "s"} · ${places.size} núcleo${places.size === 1 ? "" : "s"}</span></div>${rows.map((item) => {
       const zone = state.territoryZones.find(z=>z.id === item.territoryZoneId);
       const zoneLabel = zone ? `${zone.name}${zone.sector ? ` · ${zone.sector}` : ""}` : "Setor não confirmado";
-      return `<div class="modality-row"><div><strong>${escapeHtml(item.location || "Núcleo não informado")}</strong><small>${escapeHtml(item.name || "Turma")}${item.schedule ? ` · ${escapeHtml(item.schedule)}` : ""}</small><small>${escapeHtml(zoneLabel)}</small></div><button class="button button-secondary button-compact" type="button" data-action="open-attendance" data-id="${escapeAttr(item.id)}">Chamada</button></div>`;
+      return `<div class="modality-row"><div><strong>${escapeHtml(item.location || "Núcleo não informado")}</strong><small>${escapeHtml(item.name || "Turma")}${item.schedule ? ` · ${escapeHtml(item.schedule)}` : ""}</small><small>${escapeHtml(zoneLabel)}</small></div>${state.classes.some(c=>c.id===item.id) ? `<button class="button button-secondary button-compact" type="button" data-action="open-attendance" data-id="${escapeAttr(item.id)}">Chamada</button>` : `<span class="pill">Somente consulta</span>`}</div>`;
     }).join("")}</article>`;
   }).join("") : `<div class="empty-state">Nenhuma modalidade encontrada para o filtro escolhido.</div>`;
 }
 
 function renderOccurrences() {
   if (!ui["occurrence-list"]) return;
-  const rows = state.occurrences.filter((item) => state.occurrenceFilterClass === "all" || item.classId === state.occurrenceFilterClass);
+  const search=document.getElementById('occurrence-search'), category=document.getElementById('occurrence-category');
+  const priorCategory=category.value;
+  category.innerHTML='<option value="">Todas as categorias</option>'+[...new Set(state.occurrences.map(o=>o.type).filter(Boolean))].sort().map(t=>'<option>'+escapeHtml(t)+'</option>').join('');
+  category.value=priorCategory;
+  const q=censoKey(search.value), since=document.getElementById('occurrence-since').value, until=document.getElementById('occurrence-until').value;
+  const rows = state.occurrences.filter(item=>(state.occurrenceFilterClass==='all'||item.classId===state.occurrenceFilterClass)&&(!category.value||item.type===category.value)&&(!since||item.date>=since)&&(!until||item.date<=until)&&(!q||censoKey([item.description,item.studentName,item.teacherName,item.className].join(' ')).includes(q))).sort((a,b)=>(b.date+'T'+b.time).localeCompare(a.date+'T'+a.time));
+  document.getElementById('occurrence-summary').textContent=rows.length+' registro(s) no filtro • histórico carregado de até 80 ocorrências. Para cadastrar, preencha o formulário abaixo.';
   ui["occurrence-list"].innerHTML = rows.length ? rows.map((item) => `<article class="occurrence-card"><header><div><strong>${escapeHtml(item.className || "Turma")}</strong><div class="occurrence-meta">${formatDate(item.date)}${item.time ? ` às ${escapeHtml(item.time)}` : ""} · ${escapeHtml(item.teacherName || "Professor")}${item.studentName ? ` · ${escapeHtml(item.studentName)}` : ""}</div></div><span class="occurrence-type">${escapeHtml(item.type || "Ocorrência")}</span></header><p>${escapeHtml(item.description || "")}</p></article>`).join("") : `<div class="empty-state"><span aria-hidden="true">⚑</span><h3>Nenhuma ocorrência registrada</h3><p>Use o formulário ao lado para registrar fatos relevantes da rotina.</p></div>`;
 }
 
@@ -2734,7 +2759,7 @@ async function saveOccurrence(event) {
 
 function renderTerritoryLinks() {
   if (!ui["territory-links"]) return;
-  const visibleZones = filteredTerritoryZones(state.territoryZones);
+  const visibleZones = filteredTerritoryZones(state.territoryZones).filter(z=>(!state.selectedNeighborhood||neighborhoodKey(z.name)===neighborhoodKey(state.selectedNeighborhood))&&classesForTerritoryZone(z).length);
   const list = visibleZones.map((zone) => {
     const classes = classesForTerritoryZone(zone);
     return `<article class="territory-link-card"><strong>${escapeHtml(zone.name || "Bairro")}</strong><small>${escapeHtml(zone.sector || "Setor não informado")}</small>${classes.length ? `<ul>${classes.map((item) => `<li><strong>${escapeHtml(item.location || item.name || "Núcleo")}</strong> — ${escapeHtml([item.sport, item.schedule].filter(Boolean).join(" · ") || "Sem detalhes")}</li>`).join("")}</ul>` : `<p>Nenhum núcleo vinculado a este bairro.</p>`}</article>`;
@@ -2759,6 +2784,8 @@ function renderHelp() {
 }
 
 function handleDynamicClick(event) {
+  const v11 = event.target.closest('[data-v11]');
+  if(v11){ handleV11Action(v11).catch(e=>toast(e.message,'error')); return; }
   const actionButton = event.target.closest("[data-action]");
   if (!actionButton) return;
   const { action, id, classId, tab, status } = actionButton.dataset;
@@ -2781,6 +2808,9 @@ function handleDynamicClick(event) {
   if (action === "contact-call") contactStudent(classId, id, "call");
   if (action === "select-territory-zone") {
     state.selectedTerritoryZoneId = id === state.selectedTerritoryZoneId ? null : id;
+    const selectedZone=(state.territoryLayer==="sectors"?state.censusTerritoryZones:state.territoryZones).find(z=>z.id===state.selectedTerritoryZoneId);
+    state.selectedNeighborhood=selectedZone?.name||"";
+    renderNeighborhoodDirectory().catch(e=>toast(e.message,"error"));
     renderTerritory();
     renderTerritoryLinks();
   }
@@ -2802,7 +2832,7 @@ function handleDynamicInput(event) {
 
   if (event.target.name === "postalCode") event.target.value = formatPostalCode(event.target.value);
   if (["guardianPhone", "studentPhone", "phone"].includes(event.target.name)) event.target.value = formatPhone(event.target.value);
-  if (event.target.name === "territoryZoneId" && event.target.form === ui["student-form"]) syncTerritoryFields(ui["student-form"]);
+  if (event.target.name === "territoryZoneId" && event.target.form === ui["student-form"]) {ui["student-form"].elements.territoryMatchMethod.value="manual-zone-selection";syncTerritoryFields(ui["student-form"]);}
 }
 
 async function updateStudentContactTarget(classId, studentId, target) {
@@ -2971,10 +3001,10 @@ async function generateStudentReport() {
       (min===""||(age!==null&&age>=Number(min))) && (max===""||(age!==null&&age<=Number(max)));
   });
   const groups=censoRank(rows,({student:s,cl})=>String(group==="sport"?cl.sport:group==="age"?(censoAge(s)??"Não informada"):s[group]||"Não informado"));
-  const csv=[["Matrícula","Aluno","Turma","Bairro","Gênero","Modalidade","Idade","Situação"],...rows.map(({student:s,cl})=>[s.enrollmentCode||"",s.fullName,cl.name,s.neighborhood||"",s.gender||"",cl.sport,censoAge(s)??"",studentIsActive(s)?"Ativa":"Inativa"])];
+  const csv=[["Aluno ID","Matrícula","Aluno","Turma","Bairro","Gênero","Modalidade","Idade","Situação"],...rows.map(({student:s,cl})=>[s.globalStudentId||"Pendente",s.enrollmentCode||"",s.fullName,cl.name,s.neighborhood||"",s.gender||"",cl.sport,censoAge(s)??"",studentIsActive(s)?"Ativa":"Inativa"])];
   state.report={mode:"students",csv};
   ui["report-empty"].classList.add("hidden"); ui["report-content"].classList.remove("hidden");
-  ui["report-content"].innerHTML='<article class="panel" style="padding:20px"><h2>Cadastro de alunos</h2><p>'+censoUnique(rows).length+' pessoas estimadas · '+rows.length+' matrículas. Pessoas estimadas por nome e nascimento.</p><div id="student-report-chart" class="censo-bars"></div><div class="table-wrap"><table><thead><tr>'+csv[0].map(v=>'<th>'+escapeHtml(v)+'</th>').join("")+'</tr></thead><tbody>'+csv.slice(1).map(r=>'<tr>'+r.map(v=>'<td>'+escapeHtml(v)+'</td>').join("")+'</tr>').join("")+'</tbody></table></div></article>';
+  ui["report-content"].innerHTML='<article class="panel" style="padding:20px"><h2>Cadastro de alunos</h2><p>'+censoUnique(rows).length+' pessoas · '+rows.length+' matrículas. Cadastros antigos sem ID usam estimativa por nome e nascimento.</p><div id="student-report-chart" class="censo-bars"></div><div class="table-wrap"><table><thead><tr>'+csv[0].map(v=>'<th>'+escapeHtml(v)+'</th>').join("")+'</tr></thead><tbody>'+csv.slice(1).map(r=>'<tr>'+r.map(v=>'<td>'+escapeHtml(v)+'</td>').join("")+'</tr>').join("")+'</tbody></table></div></article>';
   censoPlot("student-report-chart",groups,rows.length,"Nenhum aluno nos filtros.");
 }
 
@@ -2983,3 +3013,367 @@ async function migrateEnrollments(classId) {
  if (enrollmentMigrations.has(classId)) return; enrollmentMigrations.add(classId);
  try { const rows=await loadStudents(classId); for (const s of rows.filter(s=>!s.enrollmentCode)) await assignEnrollmentCode(classId,s.id); await loadStudents(classId); renderClasses(); } finally { enrollmentMigrations.delete(classId); }
 }
+
+// Included in app.js at release time: shares the module's authenticated state.
+const MASTER_FIELDS = ['fullName','preferredName','birthDate','gender','neighborhood','city','state','street','number','complement','postalCode','guardianName','guardianPhone','studentPhone','phone','pcdStatus','registrationDate','contact','territoryZoneId','territoryZoneName','territorySector','territorySource','geo'];
+let registryBusy = false;
+let registryRows = [];
+let neighborhoodBase = [];
+PAGE_TITLES.reports=["ANÁLISE", "Relatórios do Censo e presença"];
+PAGE_TITLES.students = ['CADASTRO ÚNICO', 'Base geral de alunos'];
+
+function masterStudent(fields, id, timestamp, createdBy) {
+  return { ...Object.fromEntries(MASTER_FIELDS.filter(k=>fields[k]!==undefined).map(k=>[k,fields[k]])), globalStudentId:id, createdBy, updatedAt:timestamp };
+}
+
+function mergeMasterChanges(master,payload,prior) {
+  const changes=Object.fromEntries(MASTER_FIELDS.filter(key=>payload[key]!==undefined&&JSON.stringify(payload[key]??'')!==JSON.stringify(prior[key]??'')).map(key=>[key,payload[key]]));
+  return {...master,...changes};
+}
+async function studentIdentityKey(student) {
+  const normalized=censoKey(student.fullName).replace(/\s+/g,' ').trim()+'|'+String(student.birthDate||'').trim();
+  const bytes=await crypto.subtle.digest('SHA-256',new TextEncoder().encode(normalized));
+  return [...new Uint8Array(bytes)].map(b=>b.toString(16).padStart(2,'0')).join('');
+}
+function duplicateIdentityError(id) { state.duplicateStudentId=id;document.getElementById('find-existing-student').hidden=!state.isAdmin; return Error('Já existe um aluno com este nome completo e esta data de nascimento: '+id+'. Procure-o em Base geral de alunos e reutilize o Aluno ID para uma nova matrícula. Nenhum novo aluno foi salvo.'); }
+async function saveRegisteredStudent(values) {
+  const {classId, studentId, ...fields} = values;
+  if(!classId || !String(fields.fullName || '').trim()) throw Error('Informe a turma e o nome do aluno.');
+  const id = studentId || (fields.globalStudentId ? "g-"+String(fields.globalStudentId).trim().toUpperCase() : createId());
+  const payload = buildStudentPayload(fields, state.isDemo ? new Date().toISOString() : serverTimestamp());
+  const rows = await loadStudents(classId);
+  const prior = rows.find(s=>s.id===id);
+  if(!studentId && prior) throw Error("Este aluno já tem matrícula nesta turma.");
+  const requestedId = String(fields.globalStudentId || prior?.globalStudentId || '').trim().toUpperCase();
+  if(requestedId && !/^ALU-\d{6,}$/.test(requestedId)) throw Error('Aluno ID inválido. Use ALU-000001 ou deixe vazio para um novo aluno.');
+  if(prior?.globalStudentId && requestedId!==prior.globalStudentId) throw Error('O Aluno ID de uma matrícula existente é permanente.');
+  if(requestedId && rows.some(s=>s.id!==id && s.globalStudentId===requestedId)) throw Error('Este aluno já tem matrícula nesta turma. Edite o vínculo existente.');
+  const identityKey=await studentIdentityKey(payload);
+  const priorIdentityKey=prior?await studentIdentityKey(prior):'';
+  if(!state.isAdmin && prior?.globalStudentId && priorIdentityKey!==identityKey)throw Error('A alteração do nome ou nascimento de um Aluno ID existente deve ser feita pela administração.');
+  const highest = rows.reduce((n,s)=>Math.max(n,/^MAT-\d+$/.test(s.enrollmentCode||'')?Number(s.enrollmentCode.slice(4)):0),0);
+  if(state.isDemo) {
+    const data=demoData(); data.studentIdentityIndex ||= {}; data.studentRegistry ||= {}; data.registryCounter ||= 0; data.enrollmentCounters ||= {}; data.students[classId] ||= {};
+    let globalId=requestedId;
+    const indexed=data.studentIdentityIndex[identityKey];
+    const duplicate=Object.values(data.studentRegistry).find(s=>censoKey(s.fullName)===censoKey(payload.fullName)&&(s.birthDate||'')===(payload.birthDate||''));
+    const existingIdentityId=indexed?.globalStudentId||duplicate?.globalStudentId;
+    if(existingIdentityId&&existingIdentityId!==globalId)throw duplicateIdentityError(existingIdentityId);
+    if(globalId && !data.studentRegistry[globalId]) throw Error('Aluno ID não encontrado na base geral.');
+    if(!globalId) globalId='ALU-'+String(++data.registryCounter).padStart(6,'0');
+    const existing=data.studentRegistry[globalId];
+    if(existing && !prior?.globalStudentId && (censoKey(existing.fullName)!==censoKey(payload.fullName) || (existing.birthDate && payload.birthDate && existing.birthDate!==payload.birthDate))) throw Error('O nome informado não corresponde ao Aluno ID.');
+    const stamp=new Date().toISOString();
+    data.studentIdentityIndex[identityKey]={globalStudentId:globalId};
+    if(priorIdentityKey && priorIdentityKey!==identityKey && data.studentIdentityIndex[priorIdentityKey]?.globalStudentId===globalId)delete data.studentIdentityIndex[priorIdentityKey];
+    data.studentRegistry[globalId]={...existing,...masterStudent(existing ? (prior?.globalStudentId ? mergeMasterChanges(existing,payload,prior) : existing) : payload,globalId,stamp,existing?.createdBy||state.user.uid),createdAt:existing?.createdAt||stamp};
+    let code=prior?.enrollmentCode || payload.enrollmentCode;
+    data.enrollmentCounters[classId]=Math.max(highest,data.enrollmentCounters[classId]||0,/^MAT-\d+$/.test(code||'')?Number(code.slice(4)):0);
+    if(!code){data.enrollmentCounters[classId]=Math.max(highest,data.enrollmentCounters[classId]||0)+1;code='MAT-'+String(data.enrollmentCounters[classId]).padStart(6,'0');}
+    data.students[classId][id]={...prior,...payload,globalStudentId:globalId,enrollmentCode:code,createdAt:prior?.createdAt||stamp};
+    delete data.students[classId][id].id;
+    writeDemoData(data);
+    if(state.selectedClassId===classId) observeSelectedStudents(classId); else await loadStudents(classId);
+    return id;
+  }
+  const ref=doc(firebase.db,'classes',classId,'students',id);
+  const globalCounter=doc(firebase.db,'registryCounters','students');
+  const enrollmentCounter=doc(firebase.db,'classes',classId,'counters','enrollment');
+  await runTransaction(firebase.db,async tx=>{
+    const current=await tx.get(ref), count=await tx.get(globalCounter), enrollment=await tx.get(enrollmentCounter);
+    const old=current.data() || {};
+    const identityRef=doc(firebase.db,'studentIdentityIndex',identityKey), identity=await tx.get(identityRef);
+    const oldIdentityRef=priorIdentityKey&&priorIdentityKey!==identityKey?doc(firebase.db,'studentIdentityIndex',priorIdentityKey):null;
+    const oldIdentity=oldIdentityRef?await tx.get(oldIdentityRef):null;
+    const intendedId=old.globalStudentId||requestedId;
+    if(identity.exists()&&identity.data().globalStudentId!==intendedId&&(state.isAdmin||!old.globalStudentId))throw duplicateIdentityError(identity.data().globalStudentId);
+    if(!studentId && current.exists()) throw Error('Este aluno já tem matrícula nesta turma.');
+    const globalId=old.globalStudentId || requestedId || 'ALU-'+String((count.data()?.value||0)+1).padStart(6,'0');
+    const masterRef=doc(firebase.db,'studentRegistry',globalId);
+    // A new class teacher can edit an existing enrollment without opening the general person registry.
+    const master=(!state.isAdmin && old.globalStudentId) ? {exists:()=>true,data:()=>({createdBy:'',fullName:payload.fullName})} : await tx.get(masterRef);
+    if(requestedId && !master.exists()) throw Error('Aluno ID não encontrado na base geral.');
+    if(master.exists() && !old.globalStudentId && (censoKey(master.data().fullName)!==censoKey(payload.fullName) || (master.data().birthDate && payload.birthDate && master.data().birthDate!==payload.birthDate))) throw Error('O nome informado não corresponde ao Aluno ID.');
+    if(!requestedId && !old.globalStudentId && master.exists()) throw Error('Contador geral inconsistente. Solicite revisão à administração.');
+    if(old.globalStudentId&&state.isAdmin&&master.exists()){const canonicalKey=await studentIdentityKey(master.data());if(canonicalKey!==priorIdentityKey&&canonicalKey!==identityKey)throw Error("A ficha geral deste aluno foi atualizada. Abra novamente o cadastro antes de salvar.");}
+    if(!identity.exists()&&(!old.globalStudentId||state.isAdmin))tx.set(identityRef,{globalStudentId:globalId});
+    if(oldIdentityRef&&oldIdentity?.exists()&&oldIdentity.data().globalStudentId===globalId&&state.isAdmin)tx.delete(oldIdentityRef);
+    if(!master.exists()) {
+      tx.set(globalCounter,{value:(count.data()?.value||0)+1});
+      tx.set(masterRef,{...masterStudent(payload,globalId,serverTimestamp(),state.user.uid),createdAt:serverTimestamp()});
+    } else if(state.isAdmin || master.data().createdBy===state.user.uid) {
+      if(old.globalStudentId)tx.update(masterRef,masterStudent(mergeMasterChanges(master.data(),payload,old),globalId,serverTimestamp(),master.data().createdBy));
+    }
+    let code=old.enrollmentCode || payload.enrollmentCode;
+    const reserve=Math.max(highest,enrollment.data()?.value||0,/^MAT-\d+$/.test(code||'')?Number(code.slice(4)):0);
+    if(code && reserve>(enrollment.data()?.value||0))tx.set(enrollmentCounter,{value:reserve});
+    if(!code){const next=Math.max(highest,enrollment.data()?.value||0)+1;tx.set(enrollmentCounter,{value:next});code='MAT-'+String(next).padStart(6,'0');}
+    tx.set(ref,{...payload,globalStudentId:globalId,enrollmentCode:code,...(!current.exists()?{createdAt:serverTimestamp()}:{})},{merge:true});
+  });
+  return id;
+}
+
+function subscribeActivityCatalogue() {
+  state.unsubscribers.catalogue?.();
+  if(state.isDemo){state.activityCatalogue=repository.getDemoClasses();return;}
+  state.unsubscribers.catalogue=onSnapshot(collection(firebase.db,'activityCatalogue'),snapshot=>{
+    state.activityCatalogue=snapshot.docs.map(d=>({id:d.id,...d.data()}));
+    if(state.activeView==='modalities') renderModalities();
+  },error=>toast('Catálogo de atividades: '+friendlyFirebaseError(error),'error'));
+}
+
+async function readRegistry() {
+  if(!state.isAdmin) throw Error('A base geral é exclusiva da administração.');
+  registryRows=state.isDemo?Object.values(demoData().studentRegistry||{}):(await getDocs(collection(firebase.db,'studentRegistry'))).docs.map(d=>d.data());
+  return registryRows;
+}
+async function renderStudentRegistry() {
+  if(!state.isAdmin){setActiveView('dashboard');return;}
+  await readRegistry();
+  const select=document.getElementById('registry-enrollment-class'), prior=select.value||state.selectedClassId;
+  select.innerHTML=state.classes.map(cl=>'<option value="'+escapeAttr(cl.id)+'">'+escapeHtml(cl.name)+'</option>').join('');
+  if(state.classes.some(cl=>cl.id===prior))select.value=prior;
+  renderRegistryTable();
+}
+function renderRegistryTable() {
+  const q=censoKey(document.getElementById('registry-search').value);
+  const rows=registryRows.filter(s=>!q||censoKey([s.fullName,s.globalStudentId,s.neighborhood].join(' ')).includes(q)).sort((a,b)=>a.globalStudentId.localeCompare(b.globalStudentId));
+  document.getElementById('registry-summary').textContent=`${rows.length} de ${registryRows.length} pessoas • sem divisão por modalidade. Exporte a base antes de excluir.`;
+  document.getElementById('registry-list').innerHTML=rows.length?`<table><thead><tr><th>Aluno ID</th><th>Nome completo</th><th>Nascimento</th><th>Bairro</th><th>Vínculo</th></tr></thead><tbody>${rows.map(s=>`<tr><td><strong>${escapeHtml(s.globalStudentId)}</strong></td><td>${escapeHtml(s.fullName)}</td><td>${s.birthDate?formatDate(s.birthDate):'Não informado'}</td><td>${escapeHtml(s.neighborhood||'Não informado')}</td><td><button type="button" class="button button-secondary button-compact" data-v11="enroll-existing" data-id="${escapeAttr(s.globalStudentId)}">Nova matrícula</button></td></tr>`).join('')}</tbody></table>`:'<div class="empty-state"><h3>Nenhum aluno encontrado</h3><p>Adicione ou importe alunos em uma turma. Para os registros anteriores, use Integrar cadastros antigos.</p></div>';
+}
+async function migrateStudentRegistry() {
+  if(!state.isAdmin)throw Error('Operação exclusiva da administração.');
+  await readRegistry();
+  let count=0;
+  for(const cl of state.classes) {
+    const rows=await loadStudents(cl.id);
+    for(const student of rows.filter(s=>!s.globalStudentId)) {
+      const candidates=registryRows.filter(r=>censoKey(r.fullName)===censoKey(student.fullName)&&(r.birthDate||'')===(student.birthDate||''));
+      if(candidates.length>1)throw Error('Há mais de um Aluno ID para '+student.fullName+'. Revise a base geral antes de integrar esta matrícula.');
+      // Explicit human review prevents two different people with the same name/birth from being merged silently.
+      const reuse=candidates.length===1;
+      await repository.saveStudent({...student,classId:cl.id,studentId:student.id,globalStudentId:reuse?candidates[0].globalStudentId:''});
+      await readRegistry(); count++;
+    }
+    await loadStudents(cl.id);
+  }
+  await renderStudentRegistry();renderDashboard();toast(`${count} matrículas integradas à base geral.`);
+}
+async function deleteAllStudents() {
+  if(!state.isAdmin)throw Error('Operação exclusiva da administração.');
+  await readRegistry();
+  const classes=state.classes.slice();
+  const links=[];
+  for(const cl of classes) for(const student of await loadStudents(cl.id))links.push({classId:cl.id,student});
+  if(!registryRows.length&&!links.length){toast('A base já está vazia.');return;}
+  if(prompt(`Excluir ${registryRows.length} pessoas da base geral e ${links.length} matrículas de TODAS as turmas? As chamadas e ocorrências históricas serão preservadas e ainda podem conter nomes. Os contadores não serão reiniciados.\nDigite EXCLUIR TODOS OS ALUNOS para continuar.`)!=='EXCLUIR TODOS OS ALUNOS')return;
+  // Always download the exact data being removed before the first delete.
+  const backup=JSON.stringify({version:APP_VERSION,exportedAt:new Date().toISOString(),students:registryRows,enrollments:links},null,2);
+  downloadBlob(backup,`backup-alunos-${localDate()}.json`,'application/json');
+  if(!confirm('O backup JSON foi preparado para download. Confirme que o arquivo foi salvo antes de excluir definitivamente.'))return;
+  await repository.createDeletionAudit({action:'delete_all_students',classId:'all',backupReference:`backup-alunos-${localDate()}.json`});
+  if(state.isDemo){const data=demoData();data.studentRegistry={};data.studentIdentityIndex={};for(const cl of classes)data.students[cl.id]={};writeDemoData(data);}
+  else {
+    const identitySnapshot=await getDocs(collection(firebase.db,'studentIdentityIndex'));
+    const refs=links.map(x=>doc(firebase.db,'classes',x.classId,'students',x.student.id)).concat(registryRows.map(s=>doc(firebase.db,'studentRegistry',s.globalStudentId)),identitySnapshot.docs.map(d=>d.ref));
+    for(let i=0;i<refs.length;i+=400){const batch=writeBatch(firebase.db);refs.slice(i,i+400).forEach(ref=>batch.delete(ref));await batch.commit();}
+  }
+  for(const cl of classes)state.studentsByClass[cl.id]=[];
+  if(state.selectedClassId)observeSelectedStudents(state.selectedClassId);
+  await renderStudentRegistry();renderDashboard();toast('Base geral e matrículas excluídas. Históricos e contadores preservados.');
+}
+
+function syncReportControls() {
+  const mode=document.getElementById('report-period-type').value;
+  document.getElementById('student-report-filters').hidden=mode!=='students';
+  document.getElementById('report-month-wrap').hidden=mode!=='month';
+  document.getElementById('report-week-wrap').hidden=mode!=='week';
+  document.querySelectorAll('.censo-report-info').forEach(el=>el.hidden=mode==='students');
+  if(mode==='students')loadStudentFilterOptions().catch(e=>toast(e.message,'error'));
+}
+
+async function handleV11Action(button) {
+  const action=button.dataset.v11;
+  if(action==='fit-city'||action==='fit-centers'){state.mapExtent=action==='fit-city'?'municipality':'centers';state.selectedNeighborhood='';state.selectedTerritoryZoneId=null;state.territoryFilter='all';renderTerritory();renderNeighborhoodDirectory().catch(e=>toast(e.message,'error'));return;}
+  if(action==='find-existing'){
+    if(!state.isAdmin)throw Error('Solicite à administração a consulta do Aluno ID existente.');
+    closeDialog('student-dialog');setActiveView('students');document.getElementById('registry-search').value=state.duplicateStudentId||'';await renderStudentRegistry();return;
+  }
+  if(action==='enroll-existing'){
+    if(!state.isAdmin)throw Error('Operação exclusiva da administração.');
+    const master=registryRows.find(s=>s.globalStudentId===button.dataset.id), classId=document.getElementById('registry-enrollment-class').value;
+    if(!master||!classId)throw Error('Selecione uma turma para criar a matrícula.');
+    const rows=await loadStudents(classId), existing=rows.find(s=>s.globalStudentId===master.globalStudentId);
+    openStudentDialog(classId,existing?.id||'');
+    if(!existing){const form=ui['student-form'];Object.entries(master).forEach(([key,value])=>{if(form.elements[key]&&typeof value==='string')form.elements[key].value=value;});populateTerritoryZoneOptions(master.territoryZoneId||'');syncTerritoryFields(form);updateStudentAgePreview();}
+    return;
+  }
+  if(action==='center'){focusSportsCenter(button.dataset.id);return;}
+  if(action==='place-center'){if(!state.isAdmin)throw Error('Operação exclusiva da administração.');state.placingCenterId=button.dataset.id;state.selectedNeighborhood='';state.selectedTerritoryZoneId=null;renderTerritory();document.getElementById('territory-map').scrollIntoView({behavior:'smooth',block:'center'});toast('Clique no mapa para posicionar este polo.');return;}
+  if(action==='indicator') {
+    const index=Number(button.dataset.index);
+    const destinations=['students','reports','classes','modalities','modalities','reports','reports','reports','occurrences','attendance'];
+    const view=destinations[index]||'reports';
+    setActiveView(view==='students'&&!state.isAdmin?'classes':view);
+    if(view==='reports'){document.getElementById('report-period-type').value=index===1?'students':'month';syncReportControls();}
+    return;
+  }
+  if(action==='neighborhood'){state.selectedNeighborhood=button.dataset.name;state.selectedTerritoryZoneId=null;state.territoryFilter='all';await renderNeighborhoodDirectory();renderTerritory();return;}
+  if(action==='layer'){state.territoryLayer=button.value;state.territoryFilter='all';state.selectedTerritoryZoneId=null;renderTerritory();return;}
+  if(action==='clear-territory'){state.selectedNeighborhood='';state.selectedTerritoryZoneId=null;state.territoryFilter='all';await renderNeighborhoodDirectory();renderTerritory();return;}
+  if(registryBusy)return;
+  registryBusy=true;button.disabled=true;
+  try {
+    if(action==='migrate')await migrateStudentRegistry();
+    if(action==='delete-all')await deleteAllStudents();
+    if(action==='export-registry') {
+      const rows=await readRegistry(), fields=['globalStudentId','fullName','birthDate','gender','neighborhood','city','postalCode'];
+      downloadBlob('\uFEFF'+[fields,...rows.map(s=>fields.map(f=>s[f]||''))].map(r=>r.map(csvCell).join(';')).join('\n'),`base-geral-alunos-${localDate()}.csv`,'text/csv;charset=utf-8');
+    }
+  } finally {registryBusy=false;button.disabled=false;}
+}
+
+async function renderNeighborhoodDirectory() {
+  if(!neighborhoodBase.length) {
+    const response=await fetch('data/votorantim_bairros_base.geojson');
+    if(!response.ok)throw Error('Não foi possível carregar o cadastro de bairros.');
+    neighborhoodBase=(state.neighborhoodDirectory?.neighborhoods||[]).map(n=>n.name); if(!neighborhoodBase.length)neighborhoodBase=(await response.json()).features.map(f=>f.properties.bairro_original).filter(Boolean);
+  }
+  const q=censoKey(document.getElementById('neighborhood-search').value);
+  const names=[...new Set([...neighborhoodBase,...loadedStudents().map(s=>s.neighborhood).filter(Boolean)])].sort((a,b)=>a.localeCompare(b,'pt-BR'));
+  const unique=new Map();names.forEach(n=>{if(!unique.has(neighborhoodKey(n)))unique.set(neighborhoodKey(n),n);});
+  document.getElementById('neighborhood-directory').innerHTML=[...unique.values()].filter(n=>!q||censoKey(n).includes(q)).map(n=>{
+    const people=censoUnique(loadedStudents().filter(s=>neighborhoodKey(s.neighborhood)===neighborhoodKey(n)).map(student=>({student})));
+    return `<button type="button" data-v11="neighborhood" data-name="${escapeAttr(n)}" class="v11-neighborhood ${state.selectedNeighborhood===n?'selected':''}"><span>${escapeHtml(n)}</span><b>${people.length}</b></button>`;
+  }).join('')||'<p>Nenhum bairro encontrado.</p>';
+  const selected=state.selectedNeighborhood;
+  if(selected) {
+    const people=censoUnique(loadedStudents().filter(s=>neighborhoodKey(s.neighborhood)===neighborhoodKey(selected)).map(student=>({student})));
+    const source=state.neighborhoodDirectory?.neighborhoods.find(n=>neighborhoodKey(n.name)===neighborhoodKey(selected));
+    document.getElementById('neighborhood-detail').innerHTML=`<h3>${escapeHtml(selected)} • ${people.length} pessoas</h3><p>Contagem por bairro declarado no cadastro. O mapa destaca o agrupamento em que este bairro é predominante. Para localidades sem agrupamento próprio, mostra os polígonos de origem associados. São áreas de referência, sujeitas à revisão municipal.</p><p>${source ? source.dominantSectorCodes.length+" polígonos com predominância • "+source.sectorCodes.length+" com endereços associados • CEPs: "+source.postalCodes.slice(0,10).map(c=>escapeHtml(c.replace(/^(\d{5})(\d{3})$/,"$1-$2"))).join(", ")+(source.postalCodes.length>10?"…":"") : "Bairro declarado no cadastro; sem correspondência confirmada no CNEFE."}</p>${state.isAdmin?people.map(({student:s})=>`<span class="pill">${escapeHtml(s.globalStudentId||'ID pendente')} · ${escapeHtml(s.fullName)}</span>`).join(''):''}`;
+  }else document.getElementById('neighborhood-detail').innerHTML='<p>Selecione um bairro para consultar sua população cadastrada. Contagens consideram somente os cadastros autorizados e carregados.</p>';
+}
+
+document.getElementById('registry-search').addEventListener('input',renderRegistryTable);
+document.getElementById('neighborhood-search').addEventListener('input',()=>renderNeighborhoodDirectory().catch(e=>toast(e.message,'error')));
+document.getElementById('report-period-type').addEventListener('change',syncReportControls);
+document.addEventListener('keydown',event=>{const card=event.target.closest('.interactive-stat');if(card&&['Enter',' '].includes(event.key)){event.preventDefault();card.click();}});
+
+for(const id of ['occurrence-search','occurrence-category','occurrence-since','occurrence-until'])document.getElementById(id).addEventListener('input',renderOccurrences);
+
+function neighborhoodKey(value){return censoKey(value).replace(/^(jd\.?|jdm)\s+/,'jardim ').replace(/^pq\.?\s+/,'parque ').replace(/^vl\.?\s+/,'vila ').replace(/[-–]/g,' ').replace(/\s+/g,' ').trim();}
+document.getElementById('territory-layer-select').addEventListener('change',e=>handleV11Action(e.target).catch(err=>toast(err.message,'error')));
+
+async function syncActivityCatalogue() {
+  if(state.isDemo)return;
+  const items=state.classes.slice();
+  for(let index=0;index<items.length;index+=400){
+    const batch=writeBatch(firebase.db);
+    for(const cl of items.slice(index,index+400))batch.set(doc(firebase.db,'activityCatalogue',cl.id),{name:cl.name||'',sport:cl.sport||'',location:cl.location||'',schedule:cl.schedule||'',ageGroup:cl.ageGroup||'',territoryZoneId:cl.territoryZoneId||'',teacherName:cl.teacherName||'',active:cl.active!==false});
+    await batch.commit();
+  }
+  if(state.isAdmin){
+    const valid=new Set(items.map(c=>c.id)), snapshot=await getDocs(collection(firebase.db,'activityCatalogue'));
+    const stale=snapshot.docs.filter(d=>!valid.has(d.id));
+    for(let index=0;index<stale.length;index+=400){const batch=writeBatch(firebase.db);stale.slice(index,index+400).forEach(d=>batch.delete(d.ref));await batch.commit();}
+  }
+}
+
+function subscribeSportsCenters() {
+  state.unsubscribers.sportsCenters?.();
+  if(state.isDemo){state.sportsCenters=mergeSportsCenters(demoData().sportsCenters||{});return;}
+  state.unsubscribers.sportsCenters=onSnapshot(collection(firebase.db,'sportsCenters'),snapshot=>{
+    state.sportsCenters=mergeSportsCenters(Object.fromEntries(snapshot.docs.map(d=>[d.id,d.data()])));
+    if(state.activeView==='territory')renderTerritory();
+  },e=>toast('Polos oficiais carregados. Ajustes locais dependem das regras Firestore V11.','error'));
+}
+function mergeSportsCenters(overrides) {
+  return (state.bundledSportsCenters||[]).map(center=>({...center,...overrides[center.id],id:center.id}));
+}
+function validCenterPoint(center) {
+  return Number.isFinite(center.latitude)&&Number.isFinite(center.longitude)&&center.latitude>-23.75&&center.latitude<-23.45&&center.longitude>-47.60&&center.longitude<-47.20;
+}
+function visibleSportsCenters() {
+  return (state.sportsCenters||[]).filter(center=>validCenterPoint(center)&&(!state.selectedNeighborhood||neighborhoodKey(center.neighborhood)===neighborhoodKey(state.selectedNeighborhood)));
+}
+function classesForSportsCenter(center) {
+  const labels=[center.name,...(center.aliases||[])].map(neighborhoodKey);
+  return (state.activityCatalogue||state.classes).filter(cl=>labels.includes(neighborhoodKey(cl.location)));
+}
+function sportsCenterPopup(center) {
+  const classes=classesForSportsCenter(center);
+  const positionLabel=center.positionStatus==='public-map-address-needs-review'?'Equipamento identificado em mapa público • referência a conferir':center.positionStatus==='address-cnefe-2022-review-entrance'?'Ponto de referência do endereço • entrada a conferir':center.positionStatus==='manual-map-selection'?'Posição revisada pela administração':'Equipamento localizado por cadastro público';
+  return '<div class="sports-center-popup"><span class="v11-green-label">● POLO ESPORTIVO</span><h3>'+escapeHtml(center.name)+'</h3><p>'+escapeHtml(center.address)+'</p><p><small>'+escapeHtml(positionLabel)+'</small></p><h4>Atividades cadastradas no sistema</h4>'+(classes.length?'<ul>'+classes.map(cl=>'<li><strong>'+escapeHtml(cl.sport)+'</strong> • '+escapeHtml(cl.name)+'<br>'+escapeHtml(cl.schedule||'Horário não informado')+'</li>').join('')+'</ul>':'<p>Nenhuma turma vinculada a este polo no sistema.</p>')+(center.officialActivities?.length?'<p><strong>Oferta na fonte pública (set/2026)</strong><br>'+center.officialActivities.map(escapeHtml).join(' • ')+'</p>':'')+(center.positionNote?'<p>'+escapeHtml(center.positionNote)+'</p>':'')+'<a target="_blank" rel="noopener" href="'+escapeAttr(center.sourceUrl)+'">Consultar fonte da Prefeitura ↗</a></div>';
+}
+function mountSportsCentersLeaflet(map) {
+  state.sportsCenterMarkers=new Map();
+  if(document.getElementById('show-sports-centers').checked)visibleSportsCenters().forEach(center=>{
+    const icon=window.L.divIcon({className:'v11-center-marker',html:'<span aria-hidden="true"></span>',iconSize:[24,24],iconAnchor:[12,12]});
+    const marker=window.L.marker([center.latitude,center.longitude],{icon,title:center.name,alt:center.name,keyboard:true,zIndexOffset:700}).addTo(map);
+    marker.bindTooltip(center.name,{direction:'top',offset:[0,-12]});marker.bindPopup(sportsCenterPopup(center),{maxWidth:360});state.sportsCenterMarkers.set(center.id,marker);
+  });
+  map.on('click',event=>{if(state.placingCenterId)confirmSportsCenterPosition(event.latlng.lat,event.latlng.lng).catch(e=>toast(e.message,'error'));});
+}
+function mountSportsCentersGoogle(map,maps) {
+  state.googleSportsCenterMarkers=new Map();
+  if(document.getElementById('show-sports-centers').checked)visibleSportsCenters().forEach(center=>{
+    const marker=new maps.Marker({map,position:{lat:center.latitude,lng:center.longitude},title:center.name,icon:{path:maps.SymbolPath.CIRCLE,scale:9,fillColor:'#149653',fillOpacity:1,strokeColor:'#fff',strokeWeight:3},zIndex:900});
+    const popup=new maps.InfoWindow({content:sportsCenterPopup(center)});marker.addListener('click',()=>popup.open({map,anchor:marker}));state.googleSportsCenterMarkers.set(center.id,{marker,popup});
+  });
+  map.addListener('click',event=>{if(state.placingCenterId)confirmSportsCenterPosition(event.latLng.lat(),event.latLng.lng()).catch(e=>toast(e.message,'error'));});
+}
+function focusSportsCenter(id) {
+  const center=(state.sportsCenters||[]).find(c=>c.id===id);if(!center||!validCenterPoint(center))return;
+  state.selectedNeighborhood='';state.selectedTerritoryZoneId=null;document.getElementById('show-sports-centers').checked=true;
+  const leafletMarker=state.sportsCenterMarkers?.get(id);
+  const googleMarker=state.googleSportsCenterMarkers?.get(id);
+  if(leafletMarker){state.territoryMap.setView([center.latitude,center.longitude],16);leafletMarker.openPopup();}
+  else if(googleMarker){state.googleTerritoryMap.setCenter({lat:center.latitude,lng:center.longitude});state.googleTerritoryMap.setZoom(16);googleMarker.popup.open({map:state.googleTerritoryMap,anchor:googleMarker.marker});}
+  else {renderTerritory();toast('Filtro limpo. Clique novamente em Ver no mapa para abrir o polo.');}
+  document.getElementById('territory-map').scrollIntoView({behavior:'smooth',block:'center'});
+}
+function renderSportsCenterDirectory() {
+  const target=document.getElementById('sports-center-directory');if(!target)return;
+  const centers=(state.sportsCenters||[]).filter(c=>!state.selectedNeighborhood||neighborhoodKey(c.neighborhood)===neighborhoodKey(state.selectedNeighborhood));
+  document.getElementById('sports-center-count').textContent=centers.filter(validCenterPoint).length+' pontos verdes • '+centers.length+' espaços cadastrados';
+  target.innerHTML=centers.map(c=>'<article class="v11-center-card"><span class="v11-green-label">● '+escapeHtml(c.neighborhood)+'</span><h4>'+escapeHtml(c.name)+'</h4><p>'+escapeHtml(c.address)+'</p><small>'+classesForSportsCenter(c).length+' turma(s) vinculada(s)'+(!validCenterPoint(c)?' • localização pendente de revisão':'')+'</small><div class="v11-actions">'+(validCenterPoint(c)?'<button class="button button-secondary button-compact" type="button" data-v11="center" data-id="'+escapeAttr(c.id)+'">Ver no mapa</button>':'')+(state.isAdmin?'<button class="text-button" type="button" data-v11="place-center" data-id="'+escapeAttr(c.id)+'">'+(validCenterPoint(c)?'Ajustar ponto':'Posicionar no mapa')+'</button>':'')+'</div></article>').join('')||'<p>Nenhum polo cadastrado com este bairro. Limpe a seleção para ver a rede completa.</p>';
+}
+async function confirmSportsCenterPosition(latitude,longitude) {
+  if(!state.isAdmin||!state.placingCenterId)return;
+  const center=state.sportsCenters.find(c=>c.id===state.placingCenterId);state.placingCenterId=null;
+  if(!center||!validCenterPoint({latitude,longitude}))throw Error('Selecione um ponto dentro da região de Votorantim.');
+  if(!confirm('Confirmar a localização de '+center.name+' em '+latitude.toFixed(6)+', '+longitude.toFixed(6)+'?'))return;
+  const patch={latitude,longitude,positionStatus:'manual-map-selection',updatedAt:state.isDemo?new Date().toISOString():serverTimestamp()};
+  if(state.isDemo){const data=demoData();data.sportsCenters||={};data.sportsCenters[center.id]=patch;writeDemoData(data);state.sportsCenters=mergeSportsCenters(data.sportsCenters);renderTerritory();}
+  else await setDoc(doc(firebase.db,'sportsCenters',center.id),patch,{merge:true});
+  toast('Localização do polo atualizada.');
+}
+document.getElementById('show-sports-centers').addEventListener('change',renderTerritory);
+
+function resolvePostalTerritory(postalCode, neighborhood='', municipality='') {
+  const empty={zone:null,neighborhood:'',candidates:[],outside:false};
+  if(municipality&&municipality!=='3557006')return {...empty,outside:true};
+  const code=String(postalCode||'').replace(/\D/g,'');
+  if(code.length!==8)return empty;
+  const record=state.postalDirectory?.[code];
+  const names=[...new Set(record?.localities.map(n=>n.name)||[])];
+  const find=name=>state.territoryZones.find(z=>neighborhoodKey(z.name)===neighborhoodKey(name));
+  if(neighborhood){
+    const zone=find(neighborhood), candidate=names.find(n=>neighborhoodKey(n)===neighborhoodKey(neighborhood));
+    if(zone&&(candidate||!record))return {zone,neighborhood:candidate||neighborhood,candidates:[],outside:false};
+    if(zone&&!candidate&&record)return {...empty,candidates:[...new Set([neighborhood,...names])]};
+  }
+  if(names.length===1){const zone=find(names[0]);if(zone)return {zone,neighborhood:names[0],candidates:[],outside:false};}
+  return {...empty,candidates:names};
+}
+function applyPostalTerritory(form,neighborhood,zone,method) {
+  form.elements.neighborhood.value=neighborhood;form.elements.territoryZoneId.value=zone.id;form.elements.territoryMatchMethod.value=method;syncTerritoryFields(form);
+}
+document.getElementById('postal-neighborhood-choice').addEventListener('change',event=>{
+  const name=event.target.value, zone=state.territoryZones.find(z=>neighborhoodKey(z.name)===neighborhoodKey(name));
+  if(zone){applyPostalTerritory(ui['student-form'],name,zone,'cep-reviewed');ui['postal-code-help'].textContent='Bairro confirmado • zona vinculada: '+zone.name;}
+  else if(name){ui['student-form'].elements.neighborhood.value=name;ui['postal-code-help'].textContent='Bairro registrado; escolha uma zona manualmente para concluir a classificação.';}
+});
+ui['student-form'].elements.postalCode.addEventListener('blur',()=>{const value=String(ui['student-form'].elements.postalCode.value).replace(/\D/g,'');if(value.length===8&&value!==state.lastPostalLookup){state.lastPostalLookup=value;lookupPostalCode().catch(e=>toast(e.message,'error'));}});
+ui['student-form'].elements.postalCode.addEventListener('input',()=>{state.postalRequestId=(state.postalRequestId||0)+1;ui['lookup-postal-code'].disabled=false;ui['student-form'].elements.territoryZoneId.value='';ui['student-form'].elements.territoryMatchMethod.value='not-classified';syncTerritoryFields(ui['student-form']);});
+ui['student-form'].elements.neighborhood.addEventListener('change',()=>{const form=ui['student-form'];const zone=state.territoryZones.find(z=>neighborhoodKey(z.name)===neighborhoodKey(form.elements.neighborhood.value));form.elements.territoryZoneId.value=zone?.id||'';form.elements.territoryMatchMethod.value=zone?'manual-zone-selection':'not-classified';syncTerritoryFields(form);});

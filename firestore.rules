@@ -78,7 +78,7 @@ service cloud.firestore {
           'zoneId', 'zoneLabel', 'sector', 'sourceVersion', 'matchMethod'
         ]) &&
         data.keys().hasAll(['matchMethod']) &&
-        data.matchMethod in ['manual-zone-selection', 'not-classified'] &&
+        data.matchMethod in ['manual-zone-selection', 'cep-cnefe-2022', 'cep-reviewed', 'not-classified'] &&
         optionalText(data, 'zoneId', 100) &&
         optionalText(data, 'zoneLabel', 120) &&
         optionalText(data, 'sector', 100) &&
@@ -107,7 +107,7 @@ service cloud.firestore {
     }
 
     function validExistingStudent(data) {
-      return validStudent(data);
+      return validStudent(data) && (!resource.data.keys().hasAny(['globalStudentId']) || data.globalStudentId == resource.data.globalStudentId);
     }
 
     function validClass(data) {
@@ -191,7 +191,7 @@ service cloud.firestore {
           'action', 'classId', 'backupReference', 'actorUid', 'actorEmail',
           'appVersion', 'createdAt'
         ]) &&
-        data.action in ['delete_class', 'delete_student'] &&
+        data.action in ['delete_class', 'delete_student', 'delete_all_students'] &&
         data.classId is string && data.classId.size() > 0 && data.classId.size() <= 160 &&
         optionalText(data, 'className', 120) &&
         optionalText(data, 'studentId', 160) &&
@@ -239,8 +239,7 @@ service cloud.firestore {
     }
 
     match /classes/{classId} {
-      allow read: if isAdmin() ||
-        (isPasswordTeacher() && resource.data.teacherId == request.auth.uid);
+      allow read: if isAdmin() || (isPasswordTeacher() && resource.data.teacherId == request.auth.uid);
 
       // A teacher can create a class only when assigning it to themself.
       allow create: if validNewClass(request.resource.data) &&
@@ -303,6 +302,63 @@ service cloud.firestore {
     match /occurrences/{occurrenceId} {
       allow read: if isAdmin() || (isPasswordTeacher() && resource.data.teacherId == request.auth.uid);
       allow create, update: if validOccurrence(request.resource.data) && (isAdmin() || (isPasswordTeacher() && request.resource.data.teacherId == request.auth.uid));
+      allow delete: if isAdmin();
+    }
+
+
+    // General person registry: no sport, class, or enrollment fields.
+
+    // Public venue positions; no participant address or identity is stored here.
+    match /sportsCenters/{centerId} {
+      allow read: if isAdmin() || isPasswordTeacher();
+      allow create, update: if isAdmin() && request.resource.data.keys().hasOnly(['latitude','longitude','positionStatus','updatedAt']) &&
+        request.resource.data.latitude is number && request.resource.data.latitude > -23.75 && request.resource.data.latitude < -23.45 &&
+        request.resource.data.longitude is number && request.resource.data.longitude > -47.60 && request.resource.data.longitude < -47.20 &&
+        request.resource.data.positionStatus == 'manual-map-selection' && request.resource.data.updatedAt is timestamp;
+    }
+    match /activityCatalogue/{classId} {
+      allow read: if isAdmin() || isPasswordTeacher();
+      allow create, update: if canAccessClass(classId) &&
+        request.resource.data.keys().hasOnly(['name','sport','location','schedule','ageGroup','territoryZoneId','teacherName','active']) &&
+        request.resource.data.name == getAfter(/databases/$(database)/documents/classes/$(classId)).data.name &&
+        request.resource.data.sport == getAfter(/databases/$(database)/documents/classes/$(classId)).data.sport &&
+        request.resource.data.location == getAfter(/databases/$(database)/documents/classes/$(classId)).data.get('location','') &&
+        request.resource.data.schedule == getAfter(/databases/$(database)/documents/classes/$(classId)).data.get('schedule','') &&
+        request.resource.data.ageGroup == getAfter(/databases/$(database)/documents/classes/$(classId)).data.get('ageGroup','') &&
+        request.resource.data.territoryZoneId == getAfter(/databases/$(database)/documents/classes/$(classId)).data.get('territoryZoneId','') &&
+        request.resource.data.teacherName == getAfter(/databases/$(database)/documents/classes/$(classId)).data.teacherName &&
+        request.resource.data.active == getAfter(/databases/$(database)/documents/classes/$(classId)).data.active;
+      allow delete: if isAdmin();
+    }
+    match /registryCounters/{counterId} {
+      allow read: if isAdmin() || isPasswordTeacher();
+      allow create: if (isAdmin() || isPasswordTeacher()) && counterId == 'students' && request.resource.data.keys().hasOnly(['value']) && request.resource.data.value == 1;
+      allow update: if (isAdmin() || isPasswordTeacher()) && counterId == 'students' && request.resource.data.keys().hasOnly(['value']) && request.resource.data.value == resource.data.value + 1;
+    }
+    function validMaster(data, studentId) {
+      return data.keys().hasOnly(['fullName','preferredName','birthDate','gender','neighborhood','city','state','street','number','complement','postalCode','guardianName','guardianPhone','studentPhone','phone','pcdStatus','registrationDate','contact','territoryZoneId','territoryZoneName','territorySector','territorySource','geo','globalStudentId','createdBy','createdAt','updatedAt']) &&
+        data.keys().hasAll(['fullName','globalStudentId','createdBy','createdAt','updatedAt']) &&
+        data.globalStudentId == studentId && studentId.matches('ALU-[0-9]{6,}') &&
+        data.fullName is string && data.fullName.size() > 0 && data.fullName.size() <= 120 &&
+        data.createdAt is timestamp && data.updatedAt is timestamp &&
+        optionalText(data,'birthDate',10) && optionalText(data,'neighborhood',100) &&
+        optionalText(data,'postalCode',10) && validContact(data.contact);
+    }
+    // Opaque identity lookup prevents duplicate people in concurrent registrations.
+    match /studentIdentityIndex/{identityHash} {
+      allow get: if isAdmin() || isPasswordTeacher();
+      allow list: if isAdmin();
+      allow create: if (isAdmin() || isPasswordTeacher()) && identityHash.matches('[a-f0-9]{64}') &&
+        request.resource.data.keys().hasOnly(['globalStudentId']) && request.resource.data.globalStudentId is string &&
+        (isAdmin() || getAfter(/databases/$(database)/documents/studentRegistry/$(request.resource.data.globalStudentId)).data.createdBy == request.auth.uid);
+      allow update: if false;
+      allow delete: if isAdmin();
+    }
+    match /studentRegistry/{studentId} {
+      allow get: if isAdmin() || (isPasswordTeacher() && (resource == null || resource.data.createdBy == request.auth.uid));
+      allow list: if isAdmin();
+      allow create: if (isAdmin() || isPasswordTeacher()) && validMaster(request.resource.data,studentId) && request.resource.data.createdBy == request.auth.uid;
+      allow update: if validMaster(request.resource.data,studentId) && request.resource.data.createdBy == resource.data.createdBy && request.resource.data.createdAt == resource.data.createdAt && (isAdmin() || (isPasswordTeacher() && resource.data.createdBy == request.auth.uid));
       allow delete: if isAdmin();
     }
 
