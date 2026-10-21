@@ -1,3 +1,4 @@
+import { phoneDigits, phoneNumbers, displayPhone, contactNumbers, inspectClasses, catalogueEntry } from "./records-tools.mjs";
 import { ensureMapLibrary } from "./map-runtime.mjs";
 import { createInsights } from "./insights.mjs";
 import { normalizeGender, identityKey, uniquePeople, venueKey, completeVenueDirectory } from "./data-integrity.mjs";
@@ -42,7 +43,7 @@ function safeStorageSet(key, value) {
 }
 
 const DEMO_STORE_KEY = "votorantim-esporte-chamada-demo-v1";
-const APP_VERSION = "12.0.0";
+const APP_VERSION = "12.1.0";
 const FIREBASE_REQUIRED_KEYS = ["apiKey", "authDomain", "projectId", "appId"];
 const PAGE_TITLES = {
   dashboard: ["VISÃO GERAL", "Bom trabalho!"],
@@ -773,8 +774,8 @@ function renderClasses() {
 }
 
 function isContactAllowed(permission, channel) {
-  if (channel === "whatsapp") return ["whatsapp", "both"].includes(permission);
-  return ["call", "both"].includes(permission);
+  if (channel === "whatsapp") return ["whatsapp", "both", "not_informed", ""].includes(permission||"");
+  return ["call", "both", "not_informed", ""].includes(permission||"");
 }
 
 function renderTerritoryPill(student) {
@@ -1369,12 +1370,12 @@ function requireProfile() {
 }
 
 function showDialog(id) {
-  const dialog = ui[id];
+  const dialog = document.getElementById(id) || ui[id];
   if (dialog && !dialog.open) dialog.showModal();
 }
 
 function closeDialog(id) {
-  const dialog = ui[id];
+  const dialog = document.getElementById(id) || ui[id];
   if (dialog?.open) dialog.close();
   if (id === "tour-dialog") removeTourHighlight();
 }
@@ -1908,20 +1909,10 @@ function formatPostalCode(value) {
 }
 
 function formatPhone(value) {
-  const raw = String(value || "").replace(/\D/g, "");
-  const digits = (/^55\d{10,11}$/.test(raw) ? raw.slice(2) : raw).slice(0, 11);
-  if (digits.length <= 2) return digits;
-  if (digits.length <= 6) return `(${digits.slice(0, 2)}) ${digits.slice(2)}`;
-  if (digits.length <= 10) return `(${digits.slice(0, 2)}) ${digits.slice(2, 6)}-${digits.slice(6)}`;
-  return `(${digits.slice(0, 2)}) ${digits.slice(2, 7)}-${digits.slice(7)}`;
+  const numbers=phoneNumbers(value);
+  return numbers.length ? numbers.map(displayPhone).join(' / ') : String(value||'').trim();
 }
-
-function brazilPhoneDigits(value) {
-  const digits = String(value || "").replace(/\D/g, "");
-  if (/^55\d{10,11}$/.test(digits)) return digits;
-  if (/^\d{10,11}$/.test(digits)) return `55${digits}`;
-  return "";
-}
+function brazilPhoneDigits(value) { return phoneDigits(value); }
 
 function comparableText(value) {
   return String(value || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim().toLocaleLowerCase("pt-BR");
@@ -2282,6 +2273,7 @@ async function prepareWorkspace() {
 
 function clearWorkspaceState() {
   state.sessionRevision++; state.censusHydrationId++; state.activeView="dashboard";
+  state.classAuditResult=""; document.getElementById("registry-profile-dialog")?.remove();
   insights.reset(); state.territoryMap?.remove(); state.territoryMap=null;
   registryRows=[]; state.activityCatalogue=[]; state.selectedNeighborhood="";
   stopSubscriptions();
@@ -2540,10 +2532,10 @@ function getStudentContact(student) {
 }
 
 function renderContactActions(student, classId) {
-  const contact = getStudentContact(student);
-  const whatsAppDisabled = !contact.phone || !isContactAllowed(contact.permission, "whatsapp");
-  const callDisabled = !contact.phone || !isContactAllowed(contact.permission, "call");
-  return `<div class="contact-actions"><select class="contact-target-select" data-contact-target="${escapeAttr(student.id)}" data-class-id="${escapeAttr(classId)}" aria-label="Contato preferencial de ${escapeAttr(student.preferredName || student.fullName || "aluno")}"><option value="guardian" ${contact.target === "guardian" ? "selected" : ""}>Responsável</option><option value="student" ${contact.target === "student" ? "selected" : ""}>Aluno</option><option value="alternate" ${contact.target === "alternate" ? "selected" : ""}>Alternativo</option></select><div><button class="contact-action whatsapp" data-action="contact-whatsapp" data-id="${escapeAttr(student.id)}" data-class-id="${escapeAttr(classId)}" type="button" ${whatsAppDisabled ? "disabled" : ""} aria-label="Abrir WhatsApp de ${escapeAttr(contact.label)}">WhatsApp</button><button class="contact-action call" data-action="contact-call" data-id="${escapeAttr(student.id)}" data-class-id="${escapeAttr(classId)}" type="button" ${callDisabled ? "disabled" : ""} aria-label="Ligar para ${escapeAttr(contact.label)}">Ligar</button></div></div>`;
+  const permission=student.contactPermission||student.contact?.permission||'not_informed';
+  const numbers=contactNumbers(student);
+  if(!numbers.length)return '<span class="muted">Telefone ausente ou inválido; informe DDD.</span>';
+  return '<div class="contact-actions">'+numbers.map(({label,number})=>`<div><small>${escapeHtml(label)} · ${escapeHtml(displayPhone(number))}</small><div>${isContactAllowed(permission,'whatsapp')?`<a class="contact-action whatsapp" href="https://wa.me/${number}" target="_blank" rel="noopener noreferrer" aria-label="WhatsApp ${escapeAttr(label)} ${number}">WhatsApp</a>`:''} ${isContactAllowed(permission,'call')?`<a class="contact-action call" href="tel:+${number}" aria-label="Ligar ${escapeAttr(label)} ${number}">Ligar</a>`:''}${permission==='no_contact'?'<span>Contato não autorizado</span>':''}</div></div>`).join('')+'</div>';
 }
 
 function renderAttendance() {
@@ -2860,7 +2852,7 @@ function renderAdmin() {
   const teachers = state.users.length ? state.users : state.classes.map((item) => ({ id: item.teacherId, displayName: item.teacherName, email: "" }));
   const active = state.classes.filter((item) => item.active !== false).length;
   const teacherOptions = teachers.map((item) => `<option value="${escapeAttr(item.id || "")}">${escapeHtml(item.displayName || item.email || item.id || "Professor")}</option>`).join("");
-  ui["admin-content"].innerHTML = `<div class="admin-stats"><article class="panel stat-card"><div class="stat-label"><span>Turmas no acesso</span><i class="stat-icon">◒</i></div><strong>${state.classes.length}</strong><small>todas as turmas autorizadas</small></article><article class="panel stat-card"><div class="stat-label"><span>Turmas ativas</span><i class="stat-icon">✓</i></div><strong>${active}</strong><small>disponíveis para chamada</small></article><article class="panel stat-card"><div class="stat-label"><span>Professores</span><i class="stat-icon">◉</i></div><strong>${teachers.length}</strong><small>contas identificadas</small></article></div><article class="panel admin-note"><button class="button button-secondary" type="button" data-v11="normalize-genders">Padronizar F/M na base</button><p id="gender-normalization-status" role="status">Atualiza gênero na base geral e nas matrículas, preservando os outros campos.</p><strong>Gestão segura de acesso.</strong> Professores entram com e-mail/senha ou Google, mas somente os UIDs provisionados em <code>adminUsers</code> terão painel administrativo.</article><article class="panel" style="margin-top:16px;padding:20px;overflow:auto"><div class="panel-heading"><div><p class="eyebrow">TURMAS E RESPONSÁVEIS</p><h3>Reatribuição de turmas</h3></div><button class="button button-secondary button-compact" data-action="open-import" type="button">Abrir importação</button></div><p class="muted">Você pode associar uma turma a um professor mesmo depois que ele criar a conta.</p><table class="admin-table"><thead><tr><th>Turma</th><th>Modalidade</th><th>Professor atual</th><th>Alunos</th><th>Status</th><th>Nova associação</th></tr></thead><tbody>${state.classes.length ? state.classes.map((item) => `<tr><td>${escapeHtml(item.name || "Turma sem nome")}</td><td>${escapeHtml(item.sport || "—")}</td><td>${escapeHtml(item.teacherName || "—")}</td><td>${(state.studentsByClass[item.id] || []).length}</td><td>${item.active === false ? "Inativa" : "Ativa"}</td><td><div class="admin-assignment"><select id="teacher-select-${escapeAttr(item.id)}"><option value="">Selecione</option>${teacherOptions}</select><button class="row-action" data-action="assign-teacher" data-id="${escapeAttr(item.id)}" type="button">Salvar</button></div></td></tr>`).join("") : '<tr><td colspan="6">Nenhuma turma disponível.</td></tr>'}</tbody></table></article>`;
+  ui["admin-content"].innerHTML = `<div class="admin-stats"><article class="panel stat-card"><div class="stat-label"><span>Turmas no acesso</span><i class="stat-icon">◒</i></div><strong>${state.classes.length}</strong><small>todas as turmas autorizadas</small></article><article class="panel stat-card"><div class="stat-label"><span>Turmas ativas</span><i class="stat-icon">✓</i></div><strong>${active}</strong><small>disponíveis para chamada</small></article><article class="panel stat-card"><div class="stat-label"><span>Professores</span><i class="stat-icon">◉</i></div><strong>${teachers.length}</strong><small>contas identificadas</small></article></div><article class="panel admin-note"><button class="button button-primary" type="button" data-v11="audit-classes" ${state.classAuditBusy?"disabled":""}>Verificar e corrigir turmas</button><div id="class-audit-result" role="status">${state.classAuditResult||"Revise turmas, vínculos e catálogo. Correções seguras com backup; pendências ficam para análise."}</div><button class="button button-secondary" type="button" data-v11="normalize-genders">Padronizar F/M na base</button><p id="gender-normalization-status" role="status">Atualiza gênero na base geral e nas matrículas, preservando os outros campos.</p><strong>Gestão segura de acesso.</strong> Professores entram com e-mail/senha ou Google, mas somente os UIDs provisionados em <code>adminUsers</code> terão painel administrativo.</article><article class="panel" style="margin-top:16px;padding:20px;overflow:auto"><div class="panel-heading"><div><p class="eyebrow">TURMAS E RESPONSÁVEIS</p><h3>Reatribuição de turmas</h3></div><button class="button button-secondary button-compact" data-action="open-import" type="button">Abrir importação</button></div><p class="muted">Você pode associar uma turma a um professor mesmo depois que ele criar a conta.</p><table class="admin-table"><thead><tr><th>Turma</th><th>Modalidade</th><th>Professor atual</th><th>Alunos</th><th>Status</th><th>Nova associação</th></tr></thead><tbody>${state.classes.length ? state.classes.map((item) => `<tr><td>${escapeHtml(item.name || "Turma sem nome")}</td><td>${escapeHtml(item.sport || "—")}</td><td>${escapeHtml(item.teacherName || "—")}</td><td>${(state.studentsByClass[item.id] || []).length}</td><td>${item.active === false ? "Inativa" : "Ativa"}</td><td><div class="admin-assignment"><select id="teacher-select-${escapeAttr(item.id)}"><option value="">Selecione</option>${teacherOptions}</select><button class="row-action" data-action="assign-teacher" data-id="${escapeAttr(item.id)}" type="button">Salvar</button></div></td></tr>`).join("") : '<tr><td colspan="6">Nenhuma turma disponível.</td></tr>'}</tbody></table></article>`;
   state.classes.forEach((item) => {
     const select = document.getElementById(`teacher-select-${item.id}`);
     if (select) select.value = item.teacherId || "";
@@ -3291,8 +3283,81 @@ function renderRegistryTable() {
   const q=censoKey(document.getElementById('registry-search').value);
   const rows=registryRows.filter(s=>!q||censoKey([s.fullName,s.globalStudentId,s.neighborhood].join(' ')).includes(q)).sort((a,b)=>String(a.globalStudentId||'').localeCompare(String(b.globalStudentId||'')));
   document.getElementById('registry-summary').textContent=`${rows.length} de ${registryRows.length} pessoas • sem divisão por modalidade. Exporte a base antes de excluir.`;
-  document.getElementById('registry-list').innerHTML=rows.length?`<table><thead><tr><th>Aluno ID</th><th>Nome completo</th><th>Nascimento</th><th>Bairro</th><th>Vínculo</th></tr></thead><tbody>${rows.map(s=>`<tr><td><strong>${escapeHtml(s.globalStudentId)}</strong></td><td>${escapeHtml(s.fullName)}</td><td>${s.birthDate?formatDate(s.birthDate):'Não informado'}</td><td>${escapeHtml(s.neighborhood||'Não informado')}</td><td><button type="button" class="button button-secondary button-compact" data-v11="enroll-existing" data-id="${escapeAttr(s.globalStudentId)}">Nova matrícula</button></td></tr>`).join('')}</tbody></table>`:'<div class="empty-state"><h3>Nenhum aluno encontrado</h3><p>Adicione ou importe alunos em uma turma. Para os registros anteriores, use Integrar cadastros antigos.</p></div>';
+  document.getElementById('registry-list').innerHTML=rows.length?`<table><thead><tr><th>Aluno ID</th><th>Nome completo</th><th>Nascimento</th><th>Bairro</th><th>Contatos</th><th>Ficha e vínculo</th></tr></thead><tbody>${rows.map(s=>`<tr><td><strong>${escapeHtml(s.globalStudentId)}</strong></td><td>${escapeHtml(s.fullName)}</td><td>${s.birthDate?formatDate(s.birthDate):'Não informado'}</td><td>${escapeHtml(s.neighborhood||'Não informado')}</td><td>${renderContactActions(s,"")}</td><td><button type="button" class="button button-primary button-compact" data-v11="registry-profile" data-id="${escapeAttr(s.globalStudentId)}">Ficha completa</button> <button type="button" class="button button-secondary button-compact" data-v11="enroll-existing" data-id="${escapeAttr(s.globalStudentId)}">Nova matrícula</button></td></tr>`).join('')}</tbody></table>`:'<div class="empty-state"><h3>Nenhum aluno encontrado</h3><p>Adicione ou importe alunos em uma turma. Para os registros anteriores, use Integrar cadastros antigos.</p></div>';
 }
+async function openRegistryProfile(id) {
+  if(!state.isAdmin)throw Error('Operação exclusiva da administração.');
+  const revision=state.sessionRevision;
+  const master=state.isDemo?demoData().studentRegistry?.[id]:(await getDoc(doc(firebase.db,'studentRegistry',id))).data();
+  if(!master)throw Error('Aluno não encontrado na base geral.');
+  let cursor=0;const classes=[...state.classes];
+  await Promise.all(Array.from({length:Math.min(6,classes.length)},async()=>{while(cursor<classes.length)await loadStudents(classes[cursor++].id);}));
+  if(revision!==state.sessionRevision||!state.isAdmin)return;
+  const links=classes.flatMap(cl=>(state.studentsByClass[cl.id]||[]).filter(student=>student.globalStudentId===id).map(student=>({cl,student})));
+  const profile={...master};
+  for(const {student} of links)for(const [k,v] of Object.entries(student))if(profile[k]===undefined||profile[k]==='')profile[k]=v;
+  profile.globalStudentId=id;
+  profile.contactPermission=master.contactPermission||master.contact?.permission||profile.contactPermission||'not_informed';
+  const groups=[['Identificação',[['globalStudentId','Aluno ID'],['fullName','Nome completo'],['preferredName','Nome social / preferido'],['birthDate','Nascimento'],['gender','Sexo'],['pcdStatus','Pessoa com deficiência'],['registrationDate','Data de cadastro']]],['Endereço e território',[['postalCode','CEP'],['street','Logradouro'],['number','Número'],['complement','Complemento'],['neighborhood','Bairro'],['city','Cidade'],['state','UF'],['territoryZoneName','Zona / bairro vinculado'],['territorySector','Setor'],['territorySource','Fonte territorial']]],['Responsável e contatos',[['guardianName','Responsável'],['guardianPhone','Telefone do responsável'],['studentPhone','Telefone do aluno'],['phone','Contato alternativo'],['guardianEmail','E-mail do responsável']]],['Informações complementares',[['school','Escola'],['shift','Turno'],['notes','Observações'],['censusCode','Código externo'],['censusReferenceDate','Referência do censo'],['censusReviewStatus','Situação da revisão']]]];
+  const permission=profile.contactPermission||profile.contact?.permission||'not_informed';
+  const previous=document.getElementById('registry-profile-dialog');previous?.remove();
+  const dialog=document.createElement('dialog');dialog.id='registry-profile-dialog';dialog.className='dialog dialog-large';dialog.setAttribute('aria-labelledby','registry-profile-title');
+  dialog.innerHTML=`<div class="dialog-heading"><div><p class="eyebrow">FICHA CADASTRAL · ${escapeHtml(id)}</p><h2 id="registry-profile-title">${escapeHtml(profile.fullName)}</h2></div><button type="button" class="icon-button" aria-label="Fechar ficha" data-close-dialog="registry-profile-dialog">×</button></div><p class="muted">Dados da base geral, complementados por campos das matrículas quando ausentes. Matrículas são listadas separadamente.</p>${groups.map(([title,fields])=>`<section class="registry-profile-section"><h3>${title}</h3><dl>${fields.map(([key,label])=>{let value=profile[key];if(key==='gender')value=normalizeGender(value);if(['birthDate','registrationDate','censusReferenceDate'].includes(key)&&/^\d{4}-\d{2}-\d{2}$/.test(value||''))value=formatDate(value);return `<div><dt>${label}</dt><dd>${escapeHtml(value||'Não informado')}</dd></div>`;}).join('')}</dl></section>`).join('')}<section class="registry-profile-section"><h3>WhatsApp e ligação</h3>${renderContactActions(profile,'')}<p>Permissão registrada: ${escapeHtml(contactPermissionLabel(permission))}</p></section><section class="registry-profile-section"><h3>Matrículas · ${links.length}</h3>${links.map(({cl,student})=>`<article class="registry-enrollment"><strong>${escapeHtml(cl.name)}</strong><p>${escapeHtml([cl.sport,cl.location,cl.schedule].filter(Boolean).join(' · '))}</p><p>Matrícula: ${escapeHtml(student.enrollmentCode||'Pendente')} · ${escapeHtml(student.enrollmentStatus||'Ativa')}</p><button type="button" class="button button-secondary" data-v11="profile-edit" data-class-id="${escapeAttr(cl.id)}" data-id="${escapeAttr(student.id)}">Editar cadastro nesta turma</button></article>`).join('')||'<p>Sem matrícula vinculada. A pessoa permanece na base geral.</p>'}</section>`;
+  dialog.querySelector("[data-close-dialog]").addEventListener("click",()=>dialog.close());
+  document.body.appendChild(dialog);dialog.showModal();
+}
+
+async function auditClasses(button) {
+  if(!state.isAdmin)throw Error('Operação exclusiva da administração.');
+  if(state.classAuditBusy)return;
+  state.classAuditBusy=true;button.disabled=true;
+  const actor=state.user?.uid, revision=state.sessionRevision;
+  let applied=0,skipped=0;
+  const check=()=>{if(!state.isAdmin||state.user?.uid!==actor||state.sessionRevision!==revision)throw Error('A sessão mudou. Verificação interrompida.');};
+  const report=html=>{state.classAuditResult=html;const target=document.getElementById('class-audit-result');if(target)target.innerHTML=html;};
+  try {
+    report('Lendo turmas, matrículas, base geral e catálogo…');
+    let classes,students={},masters,users,catalogue;
+    if(state.isDemo){const data=demoData();classes=repository.getDemoClasses();for(const cl of classes)students[cl.id]=repository.getDemoStudents(cl.id);masters=Object.values(data.studentRegistry||{});users=state.users||[];catalogue=[];}
+    else {
+      const [cs,ms,us,as]=await Promise.all([getDocs(collection(firebase.db,'classes')),getDocs(collection(firebase.db,'studentRegistry')),getDocs(collection(firebase.db,'users')),getDocs(collection(firebase.db,'activityCatalogue'))]);
+      const rows=snapshot=>snapshot.docs.map(d=>({id:d.id,...d.data()}));classes=rows(cs);masters=rows(ms);users=rows(us);catalogue=rows(as);
+      let cursor=0;await Promise.all(Array.from({length:Math.min(6,classes.length)},async()=>{while(cursor<classes.length){const cl=classes[cursor++];students[cl.id]=rows(await getDocs(collection(firebase.db,'classes',cl.id,'students')));}}));
+    }
+    check();
+    const plan=inspectClasses(classes,students,masters,users,state.territoryZones), changes=[...plan.changes];
+    // Use the planned class corrections to refresh the public activity catalogue.
+    for(const cl of classes){const patched={...cl,...plan.changes.find(c=>c.path===`classes/${cl.id}`)?.patch};if(!patched.name||!patched.sport||!patched.teacherId)continue;const after=catalogueEntry(patched),before=catalogue.find(c=>c.id===cl.id);if(!before||Object.entries(after).some(([k,v])=>before[k]!==v))changes.push({path:`activityCatalogue/${cl.id}`,before:before||null,patch:after,replace:true});}
+    // Stale catalogue entries are reported, never deleted automatically.
+    for(const item of catalogue)if(!classes.some(cl=>cl.id===item.id))plan.issues.push({classId:item.id,message:'Atividade de catálogo sem turma correspondente; revisar antes de excluir.'});
+    downloadBlob(JSON.stringify({version:APP_VERSION,date:new Date().toISOString(),changes,issues:plan.issues},null,2),`revisao-turmas-${localDate()}.json`,'application/json');
+    if(state.isDemo){const data=demoData();for(const c of changes){if(c.path.startsWith('activityCatalogue/'))continue;const parts=c.path.split('/');const row=parts.length===2?data.classes[parts[1]]:data.students[parts[1]][parts[3]];Object.assign(row,c.patch);applied++;}writeDemoData(data);}
+    else for(let start=0;start<changes.length;start+=75){
+      check();const chunk=changes.slice(start,start+75);
+      const count=await runTransaction(firebase.db,async tx=>{
+        check();
+        const refs=chunk.map(c=>doc(firebase.db,...c.path.split('/'))),snapshots=await Promise.all(refs.map(ref=>tx.get(ref)));
+        let count=0;
+        snapshots.forEach((snapshot,i)=>{const c=chunk[i],current=snapshot.exists()?snapshot.data():null;
+          const expected=c.before&&Object.fromEntries(Object.entries(c.before).filter(([k])=>k!=='id'));
+          if(JSON.stringify(current)!==JSON.stringify(expected))return;
+          // Recheck source classes so a concurrent change never publishes a stale catalogue.
+          if(c.replace)return;
+          tx.update(refs[i],{...c.patch,updatedAt:serverTimestamp()});count++;
+        });return count;
+      });applied+=count;skipped+=chunk.filter(c=>!c.replace).length-count;
+      report(`${applied} registros corrigidos; atualizando catálogo…`);
+    }
+    // Catalogue sync reads each source class inside the transaction.
+    if(!state.isDemo)for(const cl of classes){check();await runTransaction(firebase.db,async tx=>{check();const source=await tx.get(doc(firebase.db,'classes',cl.id)),target=await tx.get(doc(firebase.db,'activityCatalogue',cl.id));if(!source.exists())return;const current=source.data();if(!current.name||!current.sport||!current.teacherId)return;const desired=catalogueEntry(current),prior=target.exists()?target.data():null;if(!prior||Object.entries(desired).some(([k,v])=>prior[k]!==v))tx.set(doc(firebase.db,'activityCatalogue',cl.id),desired);});}
+    check();const freshClasses=state.isDemo?repository.getDemoClasses():(await getDocs(collection(firebase.db,'classes'))).docs.map(d=>({id:d.id,...d.data()}));check();state.classes=freshClasses;
+    for(const cl of state.classes)await loadStudents(cl.id);
+    renderDashboard();renderClasses();
+    report(`<p><strong>${applied} registros corrigidos.</strong> Catálogo atualizado. ${skipped} alterações concorrentes preservadas. ${plan.issues.length} pendências para revisão.</p>${plan.issues.length?`<ul class="audit-issues">${plan.issues.map(i=>`<li><strong>${escapeHtml(classes.find(c=>c.id===i.classId)?.name||i.classId)}</strong>: ${escapeHtml(i.message)}</li>`).join('')}</ul>`:'<p>Nenhuma pendência detectada nas verificações executadas.</p>'}<p>Backup e diagnóstico baixados em JSON. Não houve exclusão de alunos, turmas ou matrículas.</p>`);
+  } catch(error){if(revision===state.sessionRevision)report(`Revisão interrompida após ${applied} correções: ${escapeHtml(friendlyFirebaseError(error))}. Execute novamente para concluir.`);}
+  finally{state.classAuditBusy=false;button.disabled=false;}
+}
+
 async function migrateStudentRegistry() {
   if(!state.isAdmin)throw Error('Operação exclusiva da administração.');
   await readRegistry();
@@ -3346,6 +3411,9 @@ function syncReportControls() {
 
 async function handleV11Action(button) {
   const action=button.dataset.v11;
+  if(action==='registry-profile'){if(state.profileLoading)return;state.profileLoading=true;button.disabled=true;try{await openRegistryProfile(button.dataset.id);}finally{button.disabled=false;state.profileLoading=false;}return;}
+  if(action==='audit-classes'){await auditClasses(button);return;}
+  if(action==='profile-edit'){if(!state.isAdmin)throw Error('Acesso restrito.');closeDialog('registry-profile-dialog');openStudentDialog(button.dataset.classId,button.dataset.id);return;}
   if(action==='normalize-genders'){await runGenderNormalization(button);return;}
   if(action==='retry-territory'){await loadBundledTerritoryZones();state.territoryZones=mergeTerritoryZones(state.bundledTerritoryZones,state.territoryZones);neighborhoodBase=[];await renderNeighborhoodDirectory();renderTerritory();return;}
   if(action==='fit-city'||action==='fit-centers'){state.mapExtent=action==='fit-city'?'municipality':'centers';state.selectedNeighborhood='';state.selectedTerritoryZoneId=null;state.territoryFilter='all';renderTerritory();renderNeighborhoodDirectory().catch(e=>toast(e.message,'error'));return;}

@@ -1,3 +1,7 @@
+# VotoEsporte 12.1 — Fichas e revisão de turmas
+
+Leia [a ficha completa, contatos e revisão administrativa](docs/FICHAS-E-REVISAO-12.1.md).
+
 # VotoEsporte 12.0 — Mapas leves e análise interligada
 
 Leia [as melhorias, validação e publicação](docs/MELHORIAS-12.0.md).

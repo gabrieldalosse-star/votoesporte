@@ -1,0 +1,6 @@
+VotoEsporte 12.1
+Pacote completo. Mantenha assets, data e docs na raiz do GitHub Pages.
+Preserve firebase-config.js do projeto.
+Leia docs/FICHAS-E-REVISAO-12.1.md.
+53 testes passaram. Nenhuma alteracao realizada no Firebase real.
+Publicacao pendente: conector GitHub sem permissao de escrita.
