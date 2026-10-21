@@ -1,3 +1,11 @@
+# VotoEsporte 12.3 — Correção de zonas por CEP e bairro
+
+Leia [as regras e o botão na Gestão](docs/ZONAS-POR-CEP-12.3.md).
+
+# VotoEsporte 12.2 — Preencher cadastro existente e corrigir pela Frequência
+
+Leia [as correções e onde encontrar os botões](docs/CORRECOES-12.2.md).
+
 # VotoEsporte 12.1 — Fichas e revisão de turmas
 
 Leia [a ficha completa, contatos e revisão administrativa](docs/FICHAS-E-REVISAO-12.1.md).

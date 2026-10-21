@@ -1,0 +1,8 @@
+VotoEsporte 12.3.0
+Site completo. Preserve firebase-config.js do projeto.
+Publique os arquivos mantendo assets, data e docs na raiz do GitHub Pages.
+Confirme Versao 12.3.0 no acesso.
+Gestao > Corrigir zonas por CEP e bairro.
+Leia docs/ZONAS-POR-CEP-12.3.md para as regras e limites.
+69 testes passaram. Nenhuma alteracao realizada no Firebase real.
+Publicacao pendente: conector GitHub recusou escrita.

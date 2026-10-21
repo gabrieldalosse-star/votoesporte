@@ -1,3 +1,5 @@
+import { resolvePostalZone, postalZonePatch } from "./postal-zones.mjs";
+import { flattenPerson, completePerson, fillPersonForm } from "./enrollment-profile.mjs";
 import { phoneDigits, phoneNumbers, displayPhone, contactNumbers, inspectClasses, catalogueEntry } from "./records-tools.mjs";
 import { ensureMapLibrary } from "./map-runtime.mjs";
 import { createInsights } from "./insights.mjs";
@@ -43,7 +45,7 @@ function safeStorageSet(key, value) {
 }
 
 const DEMO_STORE_KEY = "votorantim-esporte-chamada-demo-v1";
-const APP_VERSION = "12.1.0";
+const APP_VERSION = "12.3.0";
 const FIREBASE_REQUIRED_KEYS = ["apiKey", "authDomain", "projectId", "appId"];
 const PAGE_TITLES = {
   dashboard: ["VISÃO GERAL", "Bom trabalho!"],
@@ -406,8 +408,8 @@ function loadedStudents() {
 function territoryStudentsByZone() {
   const counts={};
   censoUnique(loadedStudents().map(student=>({student}))).map(row=>row.student).filter(s=>!state.selectedNeighborhood||neighborhoodKey(s.neighborhood)===neighborhoodKey(state.selectedNeighborhood)).forEach(student=>{
-    const zone=state.territoryZones.find(z=>neighborhoodKey(z.name)===neighborhoodKey(student.neighborhood));
-    const id=zone?.id||student.territoryZoneId||student.geo?.zoneId;
+    const zone=resolvePostalTerritory(student.postalCode,student.neighborhood,student.city&&neighborhoodKey(student.city)!=='votorantim'?'outside':'').zone;
+    const id=zone?.id||(!['cep-cnefe-2022','cep-reviewed'].includes(student.geo?.matchMethod||student.territoryMatchMethod)?student.territoryZoneId||student.geo?.zoneId:'');
     if(id)counts[id]=(counts[id]||0)+1;
   });
   return counts;
@@ -928,10 +930,43 @@ async function saveClass(event) {
   }
 }
 
+async function autofillExistingStudent() {
+  const form=ui['student-form'], classId=form.elements.classId.value, studentId=form.elements.studentId.value;
+  const id=form.elements.globalStudentId.value.trim().toUpperCase();
+  if(studentId){setFormMessage('student-form-message','O Aluno ID desta matrícula é permanente. Corrija os dados nos campos da ficha.');return;}
+  const ticket=state.registryLookupTicket=(state.registryLookupTicket||0)+1,revision=state.sessionRevision;
+  state.registryLookupBusy=false;form.querySelectorAll('[type="submit"]').forEach(b=>b.disabled=false);
+  const valid=()=>ticket===state.registryLookupTicket&&revision===state.sessionRevision&&form.elements.classId.value===classId&&form.elements.studentId.value===studentId&&form.elements.globalStudentId.value.trim().toUpperCase()===id;
+  fillPersonForm(form,{globalStudentId:id});populateTerritoryZoneOptions('');syncTerritoryFields(form);updateStudentAgePreview();
+  if(!id){setFormMessage('student-form-message','Novo aluno: informe os dados da ficha.');return;}
+  if(!/^ALU-\d{6,}$/.test(id)){setFormMessage('student-form-message','Informe um Aluno ID válido, por exemplo ALU-000001.');return;}
+  state.registryLookupBusy=true;form.querySelectorAll('[type="submit"]').forEach(b=>b.disabled=true);
+  setFormMessage('student-form-message','Buscando todos os dados do aluno…',true);
+  try {
+    const master=state.isDemo?demoData().studentRegistry?.[id]:(await getDoc(doc(firebase.db,'studentRegistry',id))).data();
+    if(!valid())return;
+    if(!master)throw Error('Aluno ID não encontrado. Confira o código na Base geral de alunos.');
+    let cursor=0;const classes=[...state.classes];
+    await Promise.all(Array.from({length:Math.min(6,classes.length)},async()=>{while(cursor<classes.length){const cl=classes[cursor++];if(!valid())return;if(!(cl.id in state.studentsByClass))await loadStudents(cl.id);}}));
+    if(!valid())return;
+    const links=classes.flatMap(cl=>(state.studentsByClass[cl.id]||[]).filter(s=>s.globalStudentId===id));
+    const existing=(state.studentsByClass[classId]||[]).find(s=>s.globalStudentId===id);
+    if(existing){openStudentDialog(classId,existing.id);setFormMessage('student-form-message','Este aluno já está matriculado nesta turma. A ficha foi aberta para correção.',true);return;}
+    const person=completePerson({...master,globalStudentId:id},links);
+    fillPersonForm(form,person);populateTerritoryZoneOptions(person.territoryZoneId||'');syncTerritoryFields(form);updateStudentAgePreview();
+    state.lastPostalLookup=String(person.postalCode||'').replace(/\D/g,'');
+    ui['student-dialog-title'].textContent='Nova matrícula · aluno existente';
+    setFormMessage('student-form-message','Ficha preenchida com os dados existentes. Revise e salve a nova matrícula.',true);
+  } catch(error){if(valid())setFormMessage('student-form-message',friendlyFirebaseError(error));}
+  finally{if(ticket===state.registryLookupTicket){state.registryLookupBusy=false;form.querySelectorAll('[type="submit"]').forEach(b=>b.disabled=false);}}
+}
+
 function openStudentDialog(classId, studentId = "") {
   if (!requireProfile()) return;
   const form = ui["student-form"];
   form.reset();
+  state.registryLookupTicket=(state.registryLookupTicket||0)+1; state.registryLookupBusy=false;
+  form.querySelectorAll('[type="submit"]').forEach(b=>b.disabled=false);
   document.getElementById('find-existing-student').hidden=true;
   state.lastPostalLookup='';state.postalRequestId=(state.postalRequestId||0)+1;
   document.getElementById('postal-neighborhood-choice').hidden=true;
@@ -944,7 +979,7 @@ function openStudentDialog(classId, studentId = "") {
   if (student) {
     ui["student-dialog-title"].textContent = "Editar aluno";
     form.elements.territoryMatchMethod.value=student.geo?.matchMethod||"manual-zone-selection";
-    Object.entries(student).forEach(([key, value]) => {
+    Object.entries({...student,...flattenPerson(student)}).forEach(([key, value]) => {
       if (form.elements[key] && typeof value === "string") form.elements[key].value = key === "gender" ? normalizeGender(value) : value;
     });
   } else {
@@ -962,8 +997,6 @@ function openStudentDialog(classId, studentId = "") {
   setFormMessage("student-form-message", "");
   showDialog("student-dialog");
   if(state.isAdmin) readRegistry().then(rows=>{
-    const master=student?.globalStudentId?rows.find(r=>r.globalStudentId===student.globalStudentId):null;
-    if(master&&form.elements.studentId.value===studentId&&form.elements.fullName.value===student.fullName&&form.elements.birthDate.value===(student.birthDate||'')){form.elements.fullName.value=master.fullName;form.elements.birthDate.value=master.birthDate||'';updateStudentAgePreview();}
     document.getElementById("registry-id-options").innerHTML=rows.map(s=>`<option value="${escapeAttr(s.globalStudentId)}">${escapeHtml(s.fullName)}${s.birthDate?" • "+formatDate(s.birthDate):""}</option>`).join("");}).catch(e=>toast(e.message,"error"));
 }
 
@@ -971,6 +1004,7 @@ async function saveStudent(event) {
   event.preventDefault();
   const form = event.currentTarget;
   const values = formValues(form);
+  if(state.registryLookupBusy) {setFormMessage("student-form-message","Aguarde o preenchimento da ficha existente.");return;}
   if (!values.fullName || !values.classId) {
     setFormMessage("student-form-message", "Informe o nome completo e a turma do aluno.");
     return;
@@ -1350,12 +1384,12 @@ async function lookupPostalCode() {
     try {const response=await fetch('https://viacep.com.br/ws/'+postalCode+'/json/',{signal:AbortSignal.timeout(10000)});if(response.ok){const data=await response.json();if(!data.erro)result=data;}}catch{}
     if(requestId!==state.postalRequestId||String(form.elements.postalCode.value).replace(/\D/g,'')!==postalCode)return;
     if(result){for(const [field,value]of Object.entries({street:result.logradouro,city:result.localidade,state:result.uf}))if(value)form.elements[field].value=value;}
-    const assignment=resolvePostalTerritory(postalCode,result?.bairro||'',result?.ibge||'');
+    const assignment=resolvePostalTerritory(postalCode,form.elements.neighborhood.value||result?.bairro||'',result?.ibge||'');
     form.elements.postalCode.value=formatPostalCode(postalCode);
     if(assignment.zone){applyPostalTerritory(form,assignment.neighborhood,assignment.zone,'cep-cnefe-2022');helper.textContent='Bairro: '+assignment.neighborhood+' • zona vinculada: '+assignment.zone.name+'. Confira o endereço antes de salvar.';}
     else {
       form.elements.territoryZoneId.value='';form.elements.territoryMatchMethod.value='not-classified';syncTerritoryFields(form);
-      if(result?.bairro)form.elements.neighborhood.value=result.bairro;
+      if(result?.bairro&&!form.elements.neighborhood.value)form.elements.neighborhood.value=result.bairro;
       if(assignment.candidates.length){choice.add(new Option('Selecione o bairro para confirmar a zona',''));assignment.candidates.forEach(name=>choice.add(new Option(name,name)));choice.hidden=false;helper.textContent='Este CEP tem mais de uma referência de bairro. Selecione o bairro correto para vincular a zona.';}
       else helper.textContent=assignment.outside?'CEP de outro município: nenhuma zona de Votorantim foi vinculada.':result?'Endereço localizado. Selecione o bairro ou a zona manualmente; não há correspondência segura na base.':'CEP não localizado na consulta ou na base local. Informe o endereço e a zona manualmente.';
     }
@@ -1654,8 +1688,8 @@ function updateStudentAgePreview() {
 ui["student-form"]?.elements.birthDate?.addEventListener("input", updateStudentAgePreview);
 
 function buildStudentPayload(fields, timestamp) {
-  const automatic=(!fields.territoryZoneId&&!fields.geo?.zoneId)?resolvePostalTerritory(fields.postalCode,fields.neighborhood):null;
-  const requestedZoneId = fields.territoryZoneId || fields.geo?.zoneId || automatic?.zone?.id || "";
+  const automatic=resolvePostalTerritory(fields.postalCode,fields.neighborhood,fields.city&&neighborhoodKey(fields.city)!=='votorantim'?'outside':'');
+  const requestedZoneId = automatic?.zone?.id || fields.territoryZoneId || fields.geo?.zoneId || "";
   if(automatic?.zone)fields={...fields,neighborhood:automatic.neighborhood,territoryMatchMethod:"cep-cnefe-2022"};
   const requestedZoneName = fields.territoryZoneName || fields.geo?.zoneLabel || "";
   const zone = state.territoryZones.find((item) => item.id === requestedZoneId) || state.territoryZones.find((item) => comparableText(item.name) === comparableText(requestedZoneName));
@@ -2273,7 +2307,7 @@ async function prepareWorkspace() {
 
 function clearWorkspaceState() {
   state.sessionRevision++; state.censusHydrationId++; state.activeView="dashboard";
-  state.classAuditResult=""; document.getElementById("registry-profile-dialog")?.remove();
+  state.classAuditResult=""; state.postalRepairResult=""; document.getElementById("registry-profile-dialog")?.remove();
   insights.reset(); state.territoryMap?.remove(); state.territoryMap=null;
   registryRows=[]; state.activityCatalogue=[]; state.selectedNeighborhood="";
   stopSubscriptions();
@@ -2573,7 +2607,7 @@ function renderAttendance() {
     const status = record.status || "";
     const rowClass = status === "P" ? "has-present" : status === "F" ? "has-absent" : status === "J" ? "has-justified" : "";
     const context = [student.globalStudentId || "ID pendente", student.enrollmentCode || "Sem código de matrícula", student.territoryZoneName || student.geo?.zoneLabel].filter(Boolean).join(" · ");
-    return `<div class="attendance-row ${rowClass}"><div class="attendance-person"><span class="student-initial">${initials(student.preferredName || student.fullName)}</span><div><strong>${escapeHtml(student.preferredName || student.fullName || "Sem nome")}</strong><small>${escapeHtml(context)}</small></div></div><div class="attendance-note">${renderJustificationSelect(student, record)}</div><div class="attendance-actions"><button class="attendance-status present ${status === "P" ? "active" : ""}" data-action="set-attendance" data-id="${escapeAttr(student.id)}" data-status="P" type="button" aria-pressed="${status === "P"}">P</button><button class="attendance-status justified ${status === "J" ? "active" : ""}" data-action="set-attendance" data-id="${escapeAttr(student.id)}" data-status="J" type="button" aria-pressed="${status === "J"}">J</button><button class="attendance-status absent ${status === "F" ? "active" : ""}" data-action="set-attendance" data-id="${escapeAttr(student.id)}" data-status="F" type="button" aria-pressed="${status === "F"}">F</button></div></div>`;
+    return `<div class="attendance-row ${rowClass}"><div class="attendance-person"><span class="student-initial">${initials(student.preferredName || student.fullName)}</span><div><strong>${escapeHtml(student.preferredName || student.fullName || "Sem nome")}</strong><small>${escapeHtml(context)}</small><button class="text-button attendance-edit-student" type="button" data-action="edit-student" data-class-id="${escapeAttr(classId)}" data-id="${escapeAttr(student.id)}">Corrigir cadastro do aluno</button></div></div><div class="attendance-note">${renderJustificationSelect(student, record)}</div><div class="attendance-actions"><button class="attendance-status present ${status === "P" ? "active" : ""}" data-action="set-attendance" data-id="${escapeAttr(student.id)}" data-status="P" type="button" aria-pressed="${status === "P"}">P</button><button class="attendance-status justified ${status === "J" ? "active" : ""}" data-action="set-attendance" data-id="${escapeAttr(student.id)}" data-status="J" type="button" aria-pressed="${status === "J"}">J</button><button class="attendance-status absent ${status === "F" ? "active" : ""}" data-action="set-attendance" data-id="${escapeAttr(student.id)}" data-status="F" type="button" aria-pressed="${status === "F"}">F</button></div></div>`;
   }).join("")}` : `<div class="empty-state"><span aria-hidden="true">+</span><h3>Inclua alunos nesta turma</h3><p>Sem alunos não é possível registrar uma chamada.</p><button class="button button-secondary" data-action="open-student-dialog" data-class-id="${escapeAttr(classId)}" type="button">Cadastrar aluno</button></div>`;
 }
 
@@ -2852,7 +2886,7 @@ function renderAdmin() {
   const teachers = state.users.length ? state.users : state.classes.map((item) => ({ id: item.teacherId, displayName: item.teacherName, email: "" }));
   const active = state.classes.filter((item) => item.active !== false).length;
   const teacherOptions = teachers.map((item) => `<option value="${escapeAttr(item.id || "")}">${escapeHtml(item.displayName || item.email || item.id || "Professor")}</option>`).join("");
-  ui["admin-content"].innerHTML = `<div class="admin-stats"><article class="panel stat-card"><div class="stat-label"><span>Turmas no acesso</span><i class="stat-icon">◒</i></div><strong>${state.classes.length}</strong><small>todas as turmas autorizadas</small></article><article class="panel stat-card"><div class="stat-label"><span>Turmas ativas</span><i class="stat-icon">✓</i></div><strong>${active}</strong><small>disponíveis para chamada</small></article><article class="panel stat-card"><div class="stat-label"><span>Professores</span><i class="stat-icon">◉</i></div><strong>${teachers.length}</strong><small>contas identificadas</small></article></div><article class="panel admin-note"><button class="button button-primary" type="button" data-v11="audit-classes" ${state.classAuditBusy?"disabled":""}>Verificar e corrigir turmas</button><div id="class-audit-result" role="status">${state.classAuditResult||"Revise turmas, vínculos e catálogo. Correções seguras com backup; pendências ficam para análise."}</div><button class="button button-secondary" type="button" data-v11="normalize-genders">Padronizar F/M na base</button><p id="gender-normalization-status" role="status">Atualiza gênero na base geral e nas matrículas, preservando os outros campos.</p><strong>Gestão segura de acesso.</strong> Professores entram com e-mail/senha ou Google, mas somente os UIDs provisionados em <code>adminUsers</code> terão painel administrativo.</article><article class="panel" style="margin-top:16px;padding:20px;overflow:auto"><div class="panel-heading"><div><p class="eyebrow">TURMAS E RESPONSÁVEIS</p><h3>Reatribuição de turmas</h3></div><button class="button button-secondary button-compact" data-action="open-import" type="button">Abrir importação</button></div><p class="muted">Você pode associar uma turma a um professor mesmo depois que ele criar a conta.</p><table class="admin-table"><thead><tr><th>Turma</th><th>Modalidade</th><th>Professor atual</th><th>Alunos</th><th>Status</th><th>Nova associação</th></tr></thead><tbody>${state.classes.length ? state.classes.map((item) => `<tr><td>${escapeHtml(item.name || "Turma sem nome")}</td><td>${escapeHtml(item.sport || "—")}</td><td>${escapeHtml(item.teacherName || "—")}</td><td>${(state.studentsByClass[item.id] || []).length}</td><td>${item.active === false ? "Inativa" : "Ativa"}</td><td><div class="admin-assignment"><select id="teacher-select-${escapeAttr(item.id)}"><option value="">Selecione</option>${teacherOptions}</select><button class="row-action" data-action="assign-teacher" data-id="${escapeAttr(item.id)}" type="button">Salvar</button></div></td></tr>`).join("") : '<tr><td colspan="6">Nenhuma turma disponível.</td></tr>'}</tbody></table></article>`;
+  ui["admin-content"].innerHTML = `<div class="admin-stats"><article class="panel stat-card"><div class="stat-label"><span>Turmas no acesso</span><i class="stat-icon">◒</i></div><strong>${state.classes.length}</strong><small>todas as turmas autorizadas</small></article><article class="panel stat-card"><div class="stat-label"><span>Turmas ativas</span><i class="stat-icon">✓</i></div><strong>${active}</strong><small>disponíveis para chamada</small></article><article class="panel stat-card"><div class="stat-label"><span>Professores</span><i class="stat-icon">◉</i></div><strong>${teachers.length}</strong><small>contas identificadas</small></article></div><article class="panel admin-note"><button class="button button-primary" type="button" data-v11="repair-postal-zones" ${state.postalRepairBusy?"disabled":""}>Corrigir zonas por CEP e bairro</button><div id="postal-repair-result" role="status">${state.postalRepairResult||"Revisa a base geral e as matrículas. Correspondências ambíguas ficam para análise."}</div><button class="button button-primary" type="button" data-v11="audit-classes" ${state.classAuditBusy?"disabled":""}>Verificar e corrigir turmas</button><div id="class-audit-result" role="status">${state.classAuditResult||"Revise turmas, vínculos e catálogo. Correções seguras com backup; pendências ficam para análise."}</div><button class="button button-secondary" type="button" data-v11="normalize-genders">Padronizar F/M na base</button><p id="gender-normalization-status" role="status">Atualiza gênero na base geral e nas matrículas, preservando os outros campos.</p><strong>Gestão segura de acesso.</strong> Professores entram com e-mail/senha ou Google, mas somente os UIDs provisionados em <code>adminUsers</code> terão painel administrativo.</article><article class="panel" style="margin-top:16px;padding:20px;overflow:auto"><div class="panel-heading"><div><p class="eyebrow">TURMAS E RESPONSÁVEIS</p><h3>Reatribuição de turmas</h3></div><button class="button button-secondary button-compact" data-action="open-import" type="button">Abrir importação</button></div><p class="muted">Você pode associar uma turma a um professor mesmo depois que ele criar a conta.</p><table class="admin-table"><thead><tr><th>Turma</th><th>Modalidade</th><th>Professor atual</th><th>Alunos</th><th>Status</th><th>Nova associação</th></tr></thead><tbody>${state.classes.length ? state.classes.map((item) => `<tr><td>${escapeHtml(item.name || "Turma sem nome")}</td><td>${escapeHtml(item.sport || "—")}</td><td>${escapeHtml(item.teacherName || "—")}</td><td>${(state.studentsByClass[item.id] || []).length}</td><td>${item.active === false ? "Inativa" : "Ativa"}</td><td><div class="admin-assignment"><select id="teacher-select-${escapeAttr(item.id)}"><option value="">Selecione</option>${teacherOptions}</select><button class="row-action" data-action="assign-teacher" data-id="${escapeAttr(item.id)}" type="button">Salvar</button></div></td></tr>`).join("") : '<tr><td colspan="6">Nenhuma turma disponível.</td></tr>'}</tbody></table></article>`;
   state.classes.forEach((item) => {
     const select = document.getElementById(`teacher-select-${item.id}`);
     if (select) select.value = item.teacherId || "";
@@ -3307,6 +3341,50 @@ async function openRegistryProfile(id) {
   document.body.appendChild(dialog);dialog.showModal();
 }
 
+async function repairPostalZones(button) {
+  if(!state.isAdmin)throw Error('Operação exclusiva da administração.');
+  if(state.postalRepairBusy)return;
+  state.postalRepairBusy=true;button.disabled=true;
+  const revision=state.sessionRevision,actor=state.user?.uid;
+  let updated=0,skipped=0;
+  const check=()=>{if(!state.isAdmin||state.sessionRevision!==revision||state.user?.uid!==actor)throw Error('A sessão mudou; correção interrompida.');};
+  const status=html=>{if(state.sessionRevision!==revision)return;state.postalRepairResult=html;const target=document.getElementById('postal-repair-result');if(target)target.innerHTML=html;};
+  try {
+    status('Validando as referências de CEP, bairros e zonas…');
+    await loadBundledTerritoryZones();check();
+    if(!Object.keys(state.postalDirectory||{}).length||state.territoryLoadErrors?.some(url=>/mapa-leve|complementares-leve|cep-bairros/.test(url)))throw Error('Referências incompletas. Nenhum vínculo foi alterado; tente novamente.');
+    state.territoryZones=mergeTerritoryZones(state.bundledTerritoryZones,state.territoryZones);
+    if(!state.territoryZones.length)throw Error('Zonas indisponíveis. Nenhum vínculo foi alterado.');
+    status('Conferindo endereços da base geral e de todas as matrículas…');
+    const records=[];
+    let classes;
+    if(state.isDemo){const data=demoData();classes=repository.getDemoClasses();for(const [id,row] of Object.entries(data.studentRegistry||{}))records.push({path:`studentRegistry/${id}`,row,master:true});for(const cl of classes)for(const [id,row] of Object.entries(data.students[cl.id]||{}))records.push({path:`classes/${cl.id}/students/${id}`,row,master:false});}
+    else {
+      const [registry,cs]=await Promise.all([getDocs(collection(firebase.db,'studentRegistry')),getDocs(collection(firebase.db,'classes'))]);check();
+      registry.docs.forEach(d=>records.push({path:d.ref.path,row:d.data(),master:true}));classes=cs.docs.map(d=>({id:d.id,...d.data()}));
+      let cursor=0;await Promise.all(Array.from({length:Math.min(6,classes.length)},async()=>{while(cursor<classes.length){check();const cl=classes[cursor++],snapshot=await getDocs(collection(firebase.db,'classes',cl.id,'students'));snapshot.docs.forEach(d=>records.push({path:d.ref.path,row:d.data(),master:false}));}}));
+    }
+    check();
+    const plans=records.map(record=>({...record,...postalZonePatch(record.row,state.postalDirectory,state.territoryZones,{master:record.master})}));
+    const changes=plans.filter(p=>p.patch),pending=plans.filter(p=>p.reason!=='matched');
+    downloadBlob(JSON.stringify({version:APP_VERSION,date:new Date().toISOString(),changes:changes.map(p=>({path:p.path,before:p.row,patch:p.patch,reason:p.reason})),pending:pending.map(p=>({path:p.path,globalStudentId:p.row.globalStudentId||'',name:p.row.fullName||'',cep:p.row.postalCode||'',neighborhood:p.row.neighborhood||'',reason:p.reason,candidates:p.candidates||[]}))},null,2),`backup-zonas-cep-${localDate()}.json`,'application/json');
+    if(state.isDemo){const data=demoData();for(const p of changes){const parts=p.path.split('/'),row=p.master?data.studentRegistry[parts[1]]:data.students[parts[1]][parts[3]];Object.assign(row,p.patch);updated++;}writeDemoData(data);}
+    else for(let start=0;start<changes.length;start+=75){check();const chunk=changes.slice(start,start+75);
+      const count=await runTransaction(firebase.db,async tx=>{
+        check();const refs=chunk.map(p=>doc(firebase.db,...p.path.split('/'))),snapshots=await Promise.all(refs.map(ref=>tx.get(ref)));let changed=0;
+        const signature=row=>JSON.stringify(['postalCode','neighborhood','city','territoryZoneId','territoryZoneName','territorySector','territorySource','territoryMatchMethod','geo'].map(k=>row[k]??null));
+        snapshots.forEach((snapshot,i)=>{if(!snapshot.exists())return;const row=snapshot.data(),p=chunk[i];if(signature(row)!==signature(p.row))return;const fresh=postalZonePatch(row,state.postalDirectory,state.territoryZones,{master:p.master});if(fresh.patch){tx.update(refs[i],{...fresh.patch,updatedAt:serverTimestamp()});changed++;}});return changed;
+      });updated+=count;skipped+=chunk.length-count;status(`${updated} registros corrigidos; ${Math.min(start+75,changes.length)} de ${changes.length} alterações conferidas…`);
+    }
+    check();registryRows=[];
+    for(const cl of state.classes){check();await loadStudents(cl.id);}
+    check();renderDashboard();
+    const reasons={'invalid-cep':'CEP ausente ou inválido','unknown-cep':'CEP sem referência local','cep-neighborhood-conflict':'CEP não corresponde ao bairro cadastrado','ambiguous-cep':'CEP compartilhado: falta confirmar o bairro','zone-missing':'Bairro sem zona única correspondente','outside':'Pessoa cadastrada em outro município'};
+    status(`<p><strong>${updated} registros corrigidos</strong> na base geral e nas matrículas. ${skipped} alterações concorrentes preservadas. ${pending.length} registros precisam de revisão.</p><p>Backup e lista completa baixados em JSON.</p>${pending.length?`<ul class="audit-issues">${pending.slice(0,100).map(p=>`<li>${escapeHtml(p.row.globalStudentId||p.path)} · ${escapeHtml(p.row.fullName||'Sem nome')}: ${escapeHtml(reasons[p.reason]||p.reason)} · CEP ${escapeHtml(p.row.postalCode||'não informado')} · bairro ${escapeHtml(p.row.neighborhood||'não informado')}</li>`).join('')}</ul>`:'<p>Todos os endereços conferidos têm correspondência confirmada.</p>'}`);
+  }catch(error){status(`Correção interrompida após ${updated} atualizações: ${escapeHtml(friendlyFirebaseError(error))}. Execute novamente para concluir.`);}
+  finally{state.postalRepairBusy=false;button.disabled=false;}
+}
+
 async function auditClasses(button) {
   if(!state.isAdmin)throw Error('Operação exclusiva da administração.');
   if(state.classAuditBusy)return;
@@ -3412,7 +3490,9 @@ function syncReportControls() {
 async function handleV11Action(button) {
   const action=button.dataset.v11;
   if(action==='registry-profile'){if(state.profileLoading)return;state.profileLoading=true;button.disabled=true;try{await openRegistryProfile(button.dataset.id);}finally{button.disabled=false;state.profileLoading=false;}return;}
-  if(action==='audit-classes'){await auditClasses(button);return;}
+  if(action==='audit-classes'){setActiveView('admin');await auditClasses(button);return;}
+  if(action==='repair-postal-zones'){await repairPostalZones(button);return;}
+  if(action==='fill-existing'){await autofillExistingStudent();return;}
   if(action==='profile-edit'){if(!state.isAdmin)throw Error('Acesso restrito.');closeDialog('registry-profile-dialog');openStudentDialog(button.dataset.classId,button.dataset.id);return;}
   if(action==='normalize-genders'){await runGenderNormalization(button);return;}
   if(action==='retry-territory'){await loadBundledTerritoryZones();state.territoryZones=mergeTerritoryZones(state.bundledTerritoryZones,state.territoryZones);neighborhoodBase=[];await renderNeighborhoodDirectory();renderTerritory();return;}
@@ -3427,7 +3507,7 @@ async function handleV11Action(button) {
     if(!master||!classId)throw Error('Selecione uma turma para criar a matrícula.');
     const rows=await loadStudents(classId), existing=rows.find(s=>s.globalStudentId===master.globalStudentId);
     openStudentDialog(classId,existing?.id||'');
-    if(!existing){const form=ui['student-form'];Object.entries(master).forEach(([key,value])=>{if(form.elements[key]&&typeof value==='string')form.elements[key].value=key==='gender'?normalizeGender(value):value;});populateTerritoryZoneOptions(master.territoryZoneId||'');syncTerritoryFields(form);updateStudentAgePreview();}
+    if(!existing){ui['student-form'].elements.globalStudentId.value=master.globalStudentId;await autofillExistingStudent();}
     return;
   }
   if(action==='center'){await focusSportsCenter(button.dataset.id);return;}
@@ -3589,20 +3669,7 @@ document.getElementById('show-sports-centers').addEventListener('change',renderT
 document.getElementById('sports-center-search').addEventListener('input',renderSportsCenterDirectory);
 
 function resolvePostalTerritory(postalCode, neighborhood='', municipality='') {
-  const empty={zone:null,neighborhood:'',candidates:[],outside:false};
-  if(municipality&&municipality!=='3557006')return {...empty,outside:true};
-  const code=String(postalCode||'').replace(/\D/g,'');
-  if(code.length!==8)return empty;
-  const record=state.postalDirectory?.[code];
-  const names=[...new Set(record?.localities.map(n=>n.name)||[])];
-  const find=name=>state.territoryZones.find(z=>neighborhoodKey(z.name)===neighborhoodKey(name));
-  if(neighborhood){
-    const zone=find(neighborhood), candidate=names.find(n=>neighborhoodKey(n)===neighborhoodKey(neighborhood));
-    if(zone&&(candidate||!record))return {zone,neighborhood:candidate||neighborhood,candidates:[],outside:false};
-    if(zone&&!candidate&&record)return {...empty,candidates:[...new Set([neighborhood,...names])]};
-  }
-  if(names.length===1){const zone=find(names[0]);if(zone)return {zone,neighborhood:names[0],candidates:[],outside:false};}
-  return {...empty,candidates:names};
+  return resolvePostalZone(postalCode,neighborhood,municipality,state.postalDirectory||{},state.territoryZones);
 }
 function applyPostalTerritory(form,neighborhood,zone,method) {
   form.elements.neighborhood.value=neighborhood;form.elements.territoryZoneId.value=zone.id;form.elements.territoryMatchMethod.value=method;syncTerritoryFields(form);
@@ -3614,4 +3681,10 @@ document.getElementById('postal-neighborhood-choice').addEventListener('change',
 });
 ui['student-form'].elements.postalCode.addEventListener('blur',()=>{const value=String(ui['student-form'].elements.postalCode.value).replace(/\D/g,'');if(value.length===8&&value!==state.lastPostalLookup){state.lastPostalLookup=value;lookupPostalCode().catch(e=>toast(e.message,'error'));}});
 ui['student-form'].elements.postalCode.addEventListener('input',()=>{state.postalRequestId=(state.postalRequestId||0)+1;ui['lookup-postal-code'].disabled=false;ui['student-form'].elements.territoryZoneId.value='';ui['student-form'].elements.territoryMatchMethod.value='not-classified';syncTerritoryFields(ui['student-form']);});
-ui['student-form'].elements.neighborhood.addEventListener('change',()=>{const form=ui['student-form'];const zone=state.territoryZones.find(z=>neighborhoodKey(z.name)===neighborhoodKey(form.elements.neighborhood.value));form.elements.territoryZoneId.value=zone?.id||'';form.elements.territoryMatchMethod.value=zone?'manual-zone-selection':'not-classified';syncTerritoryFields(form);});
+ui['student-form'].elements.neighborhood.addEventListener('change',()=>{
+  const form=ui['student-form'], match=resolvePostalTerritory(form.elements.postalCode.value,form.elements.neighborhood.value,form.elements.city.value&&neighborhoodKey(form.elements.city.value)!=='votorantim'?'outside':'');
+  form.elements.territoryZoneId.value=match.zone?.id||'';form.elements.territoryMatchMethod.value=match.zone?'cep-cnefe-2022':'not-classified';syncTerritoryFields(form);
+  ui['postal-code-help'].textContent=match.zone?'CEP e bairro confirmados • zona: '+match.zone.name:'CEP e bairro sem correspondência segura. Revise os dados ou selecione a zona manualmente.';
+});
+
+ui["student-form"].elements.globalStudentId.addEventListener("change",()=>autofillExistingStudent().catch(e=>toast(e.message,"error")));

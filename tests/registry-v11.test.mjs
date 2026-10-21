@@ -1,3 +1,4 @@
+import {resolvePostalZone} from "../assets/postal-zones.mjs";
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
@@ -81,7 +82,7 @@ test('CEP assignment resolves unique locations, respects declared neighborhoods,
   const main=JSON.parse(fs.readFileSync(new URL('../data/votorantim-bairros-referencia-cnefe-2022.geojson',import.meta.url)));
   const additional=JSON.parse(fs.readFileSync(new URL('../data/votorantim-bairros-complementares.geojson',import.meta.url)));
   const zones=[...main.features,...additional.features].map(f=>f.properties);
-  const sandbox={state:{postalDirectory:data.postalCodes,territoryZones:zones},neighborhoodKey:v=>String(v||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').trim().toLowerCase()};vm.createContext(sandbox);
+  const sandbox={resolvePostalZone,state:{postalDirectory:data.postalCodes,territoryZones:zones},neighborhoodKey:v=>String(v||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').trim().toLowerCase()};vm.createContext(sandbox);
   vm.runInContext(extract('function resolvePostalTerritory(','function applyPostalTerritory(')+'\nglobalThis.resolve=resolvePostalTerritory;',sandbox);
   const unique=Object.entries(data.postalCodes).find(([cep,r])=>r.localities.length===1);
   assert.ok(sandbox.resolve(unique[0]).zone);
