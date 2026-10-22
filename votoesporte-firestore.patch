@@ -1,0 +1,644 @@
+diff --git a/assets/app.js b/assets/app.js
+index 169c7a4..d0a6df8 100644
+--- a/assets/app.js
++++ b/assets/app.js
+@@ -305,10 +305,12 @@ function subscribeClasses() {
+     : query(classesRef, where("teacherId", "==", state.user.uid));
+   state.unsubscribers.classes = onSnapshot(
+     classesQuery,
++    { includeMetadataChanges: true },
+     (snapshot) => {
+       state.classes = snapshot.docs
+         .map((item) => ({ id: item.id, ...item.data() }))
+         .sort((a, b) => String(a.name || "").localeCompare(String(b.name || ""), "pt-BR"));
++      state.classesReady = !snapshot.metadata.fromCache && !snapshot.metadata.hasPendingWrites;
+       afterClassesChanged();
+     },
+     (error) => toast(friendlyFirebaseError(error), "error")
+@@ -686,6 +688,8 @@ function selectClass(classId) {
+ 
+ function observeSelectedStudents(classId) {
+   state.unsubscribers.selectedStudents?.();
++  state.liveStudentsClassId = null;
++  const revision = state.sessionRevision;
+   state.selectedStudentsSubscriptionId = classId;
+   if (state.isDemo) {
+     state.studentsByClass[classId] = repository.getDemoStudents(classId);
+@@ -695,18 +699,24 @@ function observeSelectedStudents(classId) {
+   }
+   state.unsubscribers.selectedStudents = onSnapshot(
+     query(collection(firebase.db, "classes", classId, "students"), orderBy("fullName")),
++    { includeMetadataChanges: true },
+     (snapshot) => {
++      if (state.selectedStudentsSubscriptionId !== classId || revision !== state.sessionRevision) return;
+       state.studentsByClass[classId] = snapshot.docs.map((item) => ({ id: item.id, ...item.data() }));
++      state.liveStudentsClassId = snapshot.metadata.fromCache ? null : classId;
+       renderClasses();
+       renderAttendance();
+       renderDashboard();
+       if (state.activeView === "territory") { renderTerritory(); renderTerritoryLinks(); }
+     },
+-    (error) => toast(friendlyFirebaseError(error), "error")
++    (error) => {
++      if (revision === state.sessionRevision && state.selectedStudentsSubscriptionId === classId) state.liveStudentsClassId = null;
++      toast(friendlyFirebaseError(error), "error");
++    }
+   );
+ }
+ 
+-async function loadStudents(classId) {
++async function loadStudents(classId, { preferLive = false } = {}) {
+   if (!classId) return [];
+   const sessionRevision=state.sessionRevision;
+   if (state.isDemo) {
+@@ -714,10 +724,21 @@ async function loadStudents(classId) {
+     state.studentsByClass[classId] = rows;
+     return rows;
+   }
+-  const snapshot = await getDocs(query(collection(firebase.db, "classes", classId, "students"), orderBy("fullName")));
++  if (preferLive && state.liveStudentsClassId === classId) return state.studentsByClass[classId];
++  const pending = state.studentReads ||= new Map();
++  const key = sessionRevision + ":" + classId;
++  let request = pending.get(key);
++  if (!request) {
++    request = getDocs(query(collection(firebase.db, "classes", classId, "students"), orderBy("fullName")));
++    pending.set(key, request);
++  }
++  let snapshot;
++  try { snapshot = await request; }
++  finally { if (pending.get(key) === request) pending.delete(key); }
+   if (sessionRevision !== state.sessionRevision || !state.classes.some(cl=>cl.id===classId)) return [];
+   const rows = snapshot.docs.map((item) => ({ id: item.id, ...item.data() }));
+-  state.studentsByClass[classId] = rows;
++  // Do not overwrite a newer live snapshot with an older one-shot read.
++  if (state.liveStudentsClassId !== classId) state.studentsByClass[classId] = rows;
+   return rows;
+ }
+ 
+@@ -812,7 +833,7 @@ async function ensureAttendanceReady() {
+   const classId = state.attendance.classId || state.selectedClassId || state.classes[0].id;
+   state.attendance.classId = classId;
+   ui["attendance-class"].value = classId;
+-  await loadStudents(classId);
++  await loadStudents(classId, { preferLive: true });
+   await loadAttendance();
+ }
+ 
+@@ -823,13 +844,15 @@ async function onAttendanceFilterChange() {
+   state.attendance.dirty = false;
+   if (state.attendance.classId) {
+     selectClass(state.attendance.classId);
+-    await loadStudents(state.attendance.classId);
++    await loadStudents(state.attendance.classId, { preferLive: true });
+   }
+   await loadAttendance();
+ }
+ 
+ async function loadAttendance() {
+   const { classId, date } = state.attendance;
++  const revision = state.sessionRevision;
++  const ticket = state.attendanceLoadTicket = (state.attendanceLoadTicket || 0) + 1;
+   if (!classId || !date) {
+     renderAttendance();
+     return;
+@@ -842,6 +865,8 @@ async function loadAttendance() {
+       const snapshot = await getDoc(doc(firebase.db, "classes", classId, "attendance", date));
+       entry = snapshot.exists() ? { id: snapshot.id, ...snapshot.data() } : null;
+     }
++    if (revision !== state.sessionRevision || ticket !== state.attendanceLoadTicket ||
++        state.attendance.classId !== classId || state.attendance.date !== date) return;
+     state.attendance = { sessionKind: entry?.sessionKind || "regular", sessionNote: entry?.sessionNote || "", classId, date, sessionTime: entry?.sessionTime || state.attendance.sessionTime || localTime(), records: structuredClone(entry?.records || {}), dirty: false };
+     renderAttendance();
+   } catch (error) {
+@@ -858,7 +883,6 @@ async function openAttendanceFor(classId) {
+   selectClass(classId);
+   ui["attendance-class"].value = classId;
+   setActiveView("attendance");
+-  await ensureAttendanceReady();
+ }
+ 
+ function openProfileDialog() {
+@@ -1516,7 +1540,7 @@ const repository = {
+   getDemoTerritoryZones() {
+     return Object.entries(demoData().territoryZones || {}).map(([id, row]) => ({ id, ...row })).sort((a, b) => String(a.name || "").localeCompare(String(b.name || ""), "pt-BR"));
+   },
+-  async saveStudent(values) { return saveRegisteredStudent(values); },
++  async saveStudent(values, options) { return saveRegisteredStudent(values, options); },
+   async deleteClassAsAdmin(classId) {
+     if (!state.isAdmin) throw new Error("A exclusão de turmas é exclusiva do administrador.");
+     if (state.isDemo) {
+@@ -1614,11 +1638,17 @@ const repository = {
+     return snapshot.docs.map((item) => ({ id: item.id, ...item.data() }));
+   },
+   async importStudents(classId, rows) {
++    const existing = [...await loadStudents(classId)];
+     for (const row of rows) {
+-      const existing = await loadStudents(classId);
+       const matches = existing.filter(s => row.enrollmentCode ? s.enrollmentCode === row.enrollmentCode : row.globalStudentId ? s.globalStudentId === row.globalStudentId : censoKey(s.fullName) === censoKey(row.fullName) && (s.birthDate||"") === (row.birthDate||""));
+       if(matches.length > 1) throw new Error('Há homônimos na turma. Informe aluno_id e matricula_codigo para identificar o vínculo.');
+-      await this.saveStudent({ ...row, classId, studentId: matches[0]?.id || '' });
++      await this.saveStudent({ ...row, classId, studentId: matches[0]?.id || '' }, {
++        roster: existing,
++        onSaved(saved) {
++          const index = existing.findIndex(student => student.id === saved.id);
++          if (index < 0) existing.push(saved); else existing[index] = saved;
++        }
++      });
+     }
+     await loadStudents(classId);
+     if (state.selectedClassId === classId) observeSelectedStudents(classId);
+@@ -2306,6 +2336,12 @@ async function prepareWorkspace() {
+ }
+ 
+ function clearWorkspaceState() {
++  state.classesReady = false;
++  state.catalogueReady = false;
++  state.catalogueSyncRequested = false;
++  state.catalogueSyncPromise = null;
++  state.liveStudentsClassId = null;
++  state.studentReads = new Map();
+   state.sessionRevision++; state.censusHydrationId++; state.activeView="dashboard";
+   state.classAuditResult=""; state.postalRepairResult=""; document.getElementById("registry-profile-dialog")?.remove();
+   insights.reset(); state.territoryMap?.remove(); state.territoryMap=null;
+@@ -2693,7 +2729,7 @@ async function buildReport(month, classes, mode = "month") {
+   let sessions = 0;
+ 
+   for (const classItem of classes) {
+-    const students = await loadStudents(classItem.id);
++    const students = await loadStudents(classItem.id, { preferLive: true });
+     const attendance = await repository.getAttendanceRange(classItem.id, start, end);
+     const roster = new Map(students.map((student) => [student.id, student]));
+     const stats = new Map(students.map((student) => [student.id, { student, marked: 0, present: 0, absent: 0, justified: 0, sessions: [] }]));
+@@ -3040,8 +3076,8 @@ function renderJustificationSelect(student, record) {
+   const values = [...new Set(["Atestado", "Mau-estar", "Viagem", "Outros", record.note].filter(Boolean))];
+   return '<select data-attendance-note="'+escapeAttr(student.id)+'" aria-label="Justificativa de '+escapeAttr(student.fullName)+'"><option value="">Sem justificativa</option>'+values.map(v=>'<option '+(record.note===v?'selected':'')+'>'+escapeHtml(v)+'</option>').join("")+'</select>';
+ }
+-async function assignEnrollmentCode(classId, studentId) {
+-  const rows = state.isDemo ? repository.getDemoStudents(classId) : (await getDocs(collection(firebase.db, "classes", classId, "students"))).docs.map(d=>({id:d.id,...d.data()}));
++async function assignEnrollmentCode(classId, studentId, roster) {
++  const rows = roster || (state.isDemo ? repository.getDemoStudents(classId) : (await getDocs(collection(firebase.db, "classes", classId, "students"))).docs.map(d=>({id:d.id,...d.data()})));
+   const highest = rows.reduce((max,s)=>Math.max(max, /^MAT-\d+$/.test(s.enrollmentCode||"") ? Number(s.enrollmentCode.slice(4)) : 0),0);
+   if (state.isDemo) {
+     const data = demoData(), student = data.students[classId][studentId];
+@@ -3076,7 +3112,7 @@ async function runManagementAction(action,classId,id) {
+   }
+   if (action === "number-students") {
+     const rows = await loadStudents(classId);
+-    for (const s of rows.filter(s=>!s.enrollmentCode)) await assignEnrollmentCode(classId,s.id);
++    for (const s of rows.filter(s=>!s.enrollmentCode)) await assignEnrollmentCode(classId,s.id,rows);
+     await loadStudents(classId); renderClasses(); toast("Matrículas geradas. Novos cadastros seguem a sequência."); return;
+   }
+   const isStudent = action === "toggle-student";
+@@ -3123,9 +3159,14 @@ async function generateStudentReport() {
+ }
+ 
+ const enrollmentMigrations = new Set();
+-async function migrateEnrollments(classId) {
++async function migrateEnrollments(classId, students) {
+  if (enrollmentMigrations.has(classId)) return; enrollmentMigrations.add(classId);
+- try { const rows=await loadStudents(classId); for (const s of rows.filter(s=>!s.enrollmentCode)) await assignEnrollmentCode(classId,s.id); await loadStudents(classId); renderClasses(); } finally { enrollmentMigrations.delete(classId); }
++ try {
++   const rows = students || await loadStudents(classId, { preferLive: true });
++   const pending = rows.filter(s=>!s.enrollmentCode);
++   for (const student of pending) await assignEnrollmentCode(classId, student.id, rows);
++   if (pending.length) { await loadStudents(classId); renderClasses(); }
++ } finally { enrollmentMigrations.delete(classId); }
+ }
+ 
+ // Included in app.js at release time: shares the module's authenticated state.
+@@ -3150,12 +3191,12 @@ async function studentIdentityKey(student) {
+   return [...new Uint8Array(bytes)].map(b=>b.toString(16).padStart(2,'0')).join('');
+ }
+ function duplicateIdentityError(id) { state.duplicateStudentId=id;document.getElementById('find-existing-student').hidden=!state.isAdmin; return Error('Já existe um aluno com este nome completo e esta data de nascimento: '+id+'. Procure-o em Base geral de alunos e reutilize o Aluno ID para uma nova matrícula. Nenhum novo aluno foi salvo.'); }
+-async function saveRegisteredStudent(values) {
++async function saveRegisteredStudent(values, { roster, onSaved } = {}) {
+   const {classId, studentId, ...fields} = values;
+   if(!classId || !String(fields.fullName || '').trim()) throw Error('Informe a turma e o nome do aluno.');
+   const id = studentId || (fields.globalStudentId ? "g-"+String(fields.globalStudentId).trim().toUpperCase() : createId());
+   const payload = buildStudentPayload(fields, state.isDemo ? new Date().toISOString() : serverTimestamp());
+-  const rows = await loadStudents(classId);
++  const rows = roster || await loadStudents(classId);
+   const prior = rows.find(s=>s.id===id);
+   if(!studentId && prior) throw Error("Este aluno já tem matrícula nesta turma.");
+   const requestedId = String(fields.globalStudentId || prior?.globalStudentId || '').trim().toUpperCase();
+@@ -3187,12 +3228,16 @@ async function saveRegisteredStudent(values) {
+     data.students[classId][id]={...prior,...payload,globalStudentId:globalId,enrollmentCode:code,createdAt:prior?.createdAt||stamp};
+     delete data.students[classId][id].id;
+     writeDemoData(data);
+-    if(state.selectedClassId===classId) observeSelectedStudents(classId); else await loadStudents(classId);
++    onSaved?.({id, ...data.students[classId][id]});
++    if (!roster) {
++      if(state.selectedClassId===classId) observeSelectedStudents(classId); else await loadStudents(classId);
++    }
+     return id;
+   }
+   const ref=doc(firebase.db,'classes',classId,'students',id);
+   const globalCounter=doc(firebase.db,'registryCounters','students');
+   const enrollmentCounter=doc(firebase.db,'classes',classId,'counters','enrollment');
++  let saved;
+   await runTransaction(firebase.db,async tx=>{
+     const current=await tx.get(ref), count=await tx.get(globalCounter), enrollment=await tx.get(enrollmentCounter);
+     const old=current.data() || {};
+@@ -3222,16 +3267,20 @@ async function saveRegisteredStudent(values) {
+     const reserve=Math.max(highest,enrollment.data()?.value||0,/^MAT-\d+$/.test(code||'')?Number(code.slice(4)):0);
+     if(code && reserve>(enrollment.data()?.value||0))tx.set(enrollmentCounter,{value:reserve});
+     if(!code){const next=Math.max(highest,enrollment.data()?.value||0)+1;tx.set(enrollmentCounter,{value:next});code='MAT-'+String(next).padStart(6,'0');}
++    saved = {id, ...old, ...payload, globalStudentId:globalId, enrollmentCode:code};
+     tx.set(ref,{...payload,globalStudentId:globalId,enrollmentCode:code,...(!current.exists()?{createdAt:serverTimestamp()}:{})},{merge:true});
+   });
++  onSaved?.(saved);
+   return id;
+ }
+ 
+ function subscribeActivityCatalogue() {
+   state.unsubscribers.catalogue?.();
+   if(state.isDemo){state.activityCatalogue=repository.getDemoClasses();return;}
+-  state.unsubscribers.catalogue=onSnapshot(collection(firebase.db,'activityCatalogue'),snapshot=>{
++  state.unsubscribers.catalogue=onSnapshot(collection(firebase.db,'activityCatalogue'),{includeMetadataChanges:true},snapshot=>{
+     state.activityCatalogue=snapshot.docs.map(d=>({id:d.id,...d.data()}));
++    state.catalogueReady = !snapshot.metadata.fromCache && !snapshot.metadata.hasPendingWrites;
++    syncActivityCatalogue().catch(error=>console.warn("Falha ao sincronizar catálogo",error));
+     if(state.activeView==='modalities') renderModalities();
+     if(state.activeView==='territory'){renderTerritory();renderTerritoryLinks();renderNeighborhoodDirectory().catch(e=>toast(e.message,'error'));}
+   },error=>toast('Catálogo de atividades: '+friendlyFirebaseError(error),'error'));
+@@ -3239,7 +3288,16 @@ function subscribeActivityCatalogue() {
+ 
+ async function readRegistry() {
+   if(!state.isAdmin) throw Error('A base geral é exclusiva da administração.');
+-  registryRows=state.isDemo?Object.values(demoData().studentRegistry||{}):(await getDocs(collection(firebase.db,'studentRegistry'))).docs.map(d=>({globalStudentId:d.id,...d.data()}));
++  if (state.isDemo) return registryRows = Object.values(demoData().studentRegistry||{});
++  const revision = state.sessionRevision;
++  const pending = state.registryRead;
++  const request = pending?.revision === revision ? pending.request : getDocs(collection(firebase.db,'studentRegistry'));
++  state.registryRead = {revision, request};
++  let snapshot;
++  try { snapshot = await request; }
++  finally { if (state.registryRead?.request === request) state.registryRead = null; }
++  if (revision !== state.sessionRevision || !state.isAdmin) return [];
++  registryRows = snapshot.docs.map(d=>({globalStudentId:d.id,...d.data()}));
+   return registryRows;
+ }
+ 
+@@ -3568,18 +3626,42 @@ function neighborhoodKey(value){return censoKey(value).replace(/^(jd\.?|jdm)\s+/
+ document.getElementById('territory-layer-select').addEventListener('change',e=>handleV11Action(e.target).catch(err=>toast(err.message,'error')));
+ 
+ async function syncActivityCatalogue() {
+-  if(state.isDemo)return;
+-  const items=state.classes.slice();
+-  for(let index=0;index<items.length;index+=400){
+-    const batch=writeBatch(firebase.db);
+-    for(const cl of items.slice(index,index+400))batch.set(doc(firebase.db,'activityCatalogue',cl.id),{name:cl.name||'',sport:cl.sport||'',location:cl.location||'',schedule:cl.schedule||'',ageGroup:cl.ageGroup||'',territoryZoneId:cl.territoryZoneId||'',teacherName:cl.teacherName||'',active:cl.active!==false});
+-    await batch.commit();
+-  }
+-  if(state.isAdmin){
+-    const valid=new Set(items.map(c=>c.id)), snapshot=await getDocs(collection(firebase.db,'activityCatalogue'));
+-    const stale=snapshot.docs.filter(d=>!valid.has(d.id));
+-    for(let index=0;index<stale.length;index+=400){const batch=writeBatch(firebase.db);stale.slice(index,index+400).forEach(d=>batch.delete(d.ref));await batch.commit();}
+-  }
++  if (state.isDemo || !state.classesReady || !state.catalogueReady) return;
++  state.catalogueSyncRequested = true;
++  if (state.catalogueSyncPromise) return state.catalogueSyncPromise;
++  const revision = state.sessionRevision;
++  const job = (async () => {
++    while (state.catalogueSyncRequested && revision === state.sessionRevision) {
++      state.catalogueSyncRequested = false;
++      const classes = state.classes.slice();
++      const current = new Map(state.activityCatalogue.map(row=>[row.id,row]));
++      const valid = new Set(classes.map(row=>row.id));
++      const changes = classes.map(cl=>({id:cl.id, data:catalogueEntry(cl)}))
++        .filter(row=>!current.has(row.id) || JSON.stringify(catalogueEntry(current.get(row.id))) !== JSON.stringify(row.data));
++      if (state.isAdmin) {
++        for (const row of current.values()) if (!valid.has(row.id)) changes.push({id:row.id, data:null});
++      }
++      for (let index=0; index<changes.length; index+=400) {
++        if (revision !== state.sessionRevision) return;
++        const chunk = changes.slice(index,index+400), batch = writeBatch(firebase.db);
++        for (const row of chunk) {
++          const ref = doc(firebase.db,'activityCatalogue',row.id);
++          if (row.data) batch.set(ref,row.data); else batch.delete(ref);
++        }
++        await batch.commit();
++        if (revision !== state.sessionRevision) return;
++        // Reconcile acknowledged writes before processing an event queued in flight.
++        const acknowledged = new Map(state.activityCatalogue.map(row=>[row.id,row]));
++        for (const row of chunk) {
++          if (row.data) acknowledged.set(row.id,{id:row.id,...row.data}); else acknowledged.delete(row.id);
++        }
++        state.activityCatalogue = [...acknowledged.values()];
++      }
++    }
++  })();
++  state.catalogueSyncPromise = job;
++  try { await job; }
++  finally { if (state.catalogueSyncPromise === job) state.catalogueSyncPromise = null; }
+ }
+ 
+ function subscribeSportsCenters() {
+diff --git a/docs/AUDITORIA-FIRESTORE-2026-10-22.md b/docs/AUDITORIA-FIRESTORE-2026-10-22.md
+new file mode 100644
+index 0000000..c8ad97d
+--- /dev/null
++++ b/docs/AUDITORIA-FIRESTORE-2026-10-22.md
+@@ -0,0 +1,91 @@
++# Auditoria de leituras do Firestore — 22/10/2026
++
++Base examinada: commit `2314cc512293e27eb12d8980234395c218800eee`, branch principal de `gabrieldalosse-star/votoesporte`.
++
++## Conclusão
++
++Há multiplicação de leituras no código, especialmente em importação e numeração de matrículas. O PR elimina essas releituras e a consulta redundante de catálogo, compartilha consultas simultâneas e reaproveita o roster da turma com listener ativo em chamadas e relatórios. Não muda regras, índices, modelo de documentos ou infraestrutura.
++
++O usuário informou aproximadamente 31 mil leituras (61,5% da franquia de 50 mil), 2,6 mil gravações e 13 exclusões. Esses valores são agregados: sem telemetria por operação, não é possível dizer quantas das leituras vieram de cada fluxo nem prometer uma redução percentual diária. O arredondamento de 31 mil também explica por que a porcentagem não é exatamente 62%.
++
++Não foram acessados dados de produção, realizados testes contra o projeto Firebase real, publicados arquivos em hospedagem, implantadas regras ou feita migração de banco.
++
++## Causas verificadas e alterações
++
++| Fluxo em assets/app.js | Antes | Depois |
++| --- | --- | --- |
++| repository.importStudents + saveRegisteredStudent | Cada linha consulta a turma; o salvamento consulta a turma novamente. A lista cresce a cada inserção. | Uma lista inicial, atualizada com o resultado de cada transação confirmada; uma atualização final. Mantém retorno do salvamento como ID string. |
++| assignEnrollmentCode + migrateEnrollments + number-students | Consulta toda a turma para cada aluno sem código; migração relê mesmo quando ninguém precisa de código. | Compartilha roster com a operação inteira; só atualiza ao final se houve matrículas pendentes. Preserva transações e contador por turma. |
++| afterClassesChanged → syncActivityCatalogue | Regrava todas as turmas acessíveis em cada snapshot de turmas. Administrador também consulta todo o catálogo para encontrar órfãos. | Compara apenas campos públicos com o catálogo já observado; grava somente diferenças e remove órfãos somente como administrador. Nenhum getDocs extra. |
++| syncActivityCatalogue concorrente | Chamadas podem sobrepor lotes. | Serializa e reavalia alterações recebidas enquanto um lote estava pendente; lotes de até 400 operações. |
++| loadStudents | Consultas iguais simultâneas de hidratação, migração, chamada e relatórios são independentes. | Uma consulta em andamento por sessão/turma. A entrada sai do mapa ao terminar ou falhar; consultas posteriores continuam buscando dados atuais. |
++| ensureAttendanceReady / buildReport | Sempre consultam alunos, mesmo com listener ativo já abastecido pelo servidor. | Podem usar exclusivamente a turma com listener ativo confirmado pelo servidor. Outras turmas continuam com consulta atual. |
++| openAttendanceFor | setActiveView já prepara a chamada e a função a prepara novamente. | Um único preparo, iniciado ao trocar de tela. |
++| readRegistry | Duas aberturas/renderizações simultâneas da base podem disparar duas consultas completas. | Compartilha somente o pedido em andamento e descarta resposta após troca de sessão/perda de acesso administrativo. |
++| loadAttendance | Resposta lenta de uma data pode substituir a chamada de outra data ou sessão. | Verifica sessão, turma, data e ordem do pedido antes de aplicar resposta. |
++
++O roster da importação só recebe IDs e matrículas depois da confirmação da transação. As leituras transacionais de identidade, ficha, cadastro global e contadores continuam necessárias para integridade. Linhas repetidas no mesmo CSV passam a encontrar o vínculo recém-gravado. Falhas não publicam resultado no roster.
++
++A reconciliação de catálogo aguarda snapshots de servidor sem gravações pendentes tanto de turmas quanto do catálogo. Isso evita usar um cache vazio/incompleto como prova de que uma turma foi excluída. Mudanças de metadados também são observadas para saber quando essa confirmação chegou. Professores não excluem entradas de turmas de outros professores.
++
++## Custos: exemplos calculáveis, não medições de produção
++
++Considere N matrículas existentes, R linhas importadas, T turmas e M alunos sem matrícula.
++
++* Reimportar R alunos já existentes: aproximadamente `2 × R × N + N` documentos de listas antes, contra `2 × N` depois, fora transações, regras e listeners. Com N=R=100: **20.100 → 200** leituras de documentos nessas consultas de lista.
++* Inserir 100 alunos em turma vazia: as duas varreduras por linha somam `2 × (0+1+...+99)`, mais a atualização final: aproximadamente 10 mil documentos lidos antes. Depois, consulta inicial vazia e lista final de 100. Consultas vazias têm cobrança mínima.
++* Gerar M matrículas: elimina M varreduras adicionais de N documentos. As duas leituras transacionais por tentativa, aluno e contador, permanecem, assim como possíveis retries.
++* Editar uma turma entre T=96: antes, até 96 gravações de catálogo e uma consulta administrativa de 96 documentos; depois, **uma gravação e zero consultas adicionais de catálogo**, supondo outras entradas já corretas.
++* Abrir chamada da turma com roster vivo pronto: elimina a consulta repetida de alunos e uma segunda preparação da mesma chamada. Primeira abertura antes do snapshot vivo ainda pode precisar de consulta.
++
++Não foi acrescentada gravação de métricas no Firestore. Não foi introduzido custo de Cloud Functions, nova infraestrutura, agregados ou migração. O PR não requer novos índices nem alteração de regras. Como a configuração regional e o plano efetivo não foram auditados, não há estimativa monetária inventada.
++
++## Listeners, renderizações e paginação
++
++* `classes`: listener global para administrador, filtrado por teacherId para professor. Reassinar ocorre no preparo da sessão e em ações explícitas, não a cada renderização.
++* `selectedStudents`: somente uma turma selecionada; anterior cancelado ao trocar. Reuso de dados vivos é desabilitado em cache, erro e troca de assinatura/sessão.
++* `syncMonthlyAttendance`: um listener por turma acessível, limitado ao mês corrente. Esse é um custo inicial real: por exemplo, 96 turmas × 20 chamadas = 1.920 documentos por sessão administrativa, além das atualizações. Foi preservado para manter os indicadores mensais sincronizados.
++* `hydrateCensusStudents`: carrega inicialmente alunos de todas as turmas acessíveis para os totais, gráficos e mapa. 96 × 30 = 2.880 documentos por sessão, antes dos demais dados. O custo cresce com cada navegador, aba e novo acesso. Esta carga completa foi preservada para não transformar totais em contagens parciais silenciosamente.
++* Outros listeners: catálogo, zonas e centros esportivos; usuários para administrador; ocorrências limitadas a 80, filtradas por professor quando aplicável. Cancelamento geral existe no encerramento da sessão.
++* Histórico de turma: até 30 chamadas. Relatórios de presença consultam o intervalo escolhido e continuam atualizados a cada geração. Eles ainda podem ler documentos também presentes nos listeners mensais; isso está documentado como custo residual.
++* A paginação de 30 alunos em `assets/insights.mjs` é visual, sobre dados já carregados; mudar a página não consulta Firestore. Ela não reduz o custo de hidratação inicial.
++* Busca na base geral filtra em memória; digitar não relê Firestore. Reabrir a base em outro momento faz nova consulta, para manter atualização.
++* `renderDashboard`, gráficos e filtros redesenham dados em memória. Uma renderização DOM não equivale automaticamente a leitura Firestore. Foram removidos pedidos duplicados reais, sem tratar toda renderização como consulta.
++* Correções administrativas, auditoria integral, backups e exclusões continuam com consultas completas explícitas. Não foram escondidas atrás de cache para reduzir números à custa de consistência.
++* As regras usam `exists(adminUsers/...)` e `get(classes/...)`; leituras de dependências das regras também podem ser cobradas. Chamadas repetidas podem se beneficiar do cache de avaliação, mas não se deve multiplicar automaticamente cada chamada textual de regra por documentos retornados.
++
++Não foi introduzido `limit` arbitrário nos alunos/base geral: isso quebraria relatórios, detecção de vínculos, maior matrícula e contagens. Uma próxima etapa de escala deve separar busca paginada por cursor de agregados de totais e relatórios processados no servidor. Paginar uma lista e continuar carregando tudo para os gráficos não resolve a origem do custo.
++
++O aplicativo usa leituras pontuais para abrir o documento de chamada, não um listener desse documento. O PR preserva esse comportamento e os listeners mensais existentes; não afirma adicionar edição colaborativa em tempo real à chamada aberta.
++
++## Validação e limites
++
++Execução local: `node --test tests/*.test.mjs`, incluindo regressões de cadastro único, transações simuladas, IDs permanentes, matrículas, relatórios, permissões, CEP, território e contatos, além dos testes novos de consumo. Validação sintática de `assets/app.js` e `git diff --check`.
++
++Os novos testes verificam: deduplicação somente em andamento; retry; isolamento de sessão; uso de roster vivo; catálogo sem diferenças; atualização unitária; ausência de exclusão por professor; espera por snapshots autoritativos; filas concorrentes; limites de lote; falha/retry; interrupção entre lotes na troca de sessão; importação com linhas repetidas; retorno de ID/código após commit; numeração crescente e resposta tardia da chamada.
++
++Não foi executado Firebase Emulator nem teste manual com duas contas em navegadores. Os testes de transação usam mocks; não comprovam regras publicadas, índices implantados ou redução efetiva da fatura.
++
++Para homologar o PR antes de produção: em projeto de teste, importar/reimportar um CSV conhecido e conferir IDs/códigos; abrir a mesma turma em duas contas autorizadas e editar cadastro; trocar rapidamente turma/data; gerar relatórios mensal e semanal; editar turma e conferir catálogo; validar exclusão administrativa e troca de conta. Comparar leituras/gravações para a mesma sequência antes/depois. Medir em janela sem outros usuários e considerar dependências das regras e consultas vazias.
++
++## Banco gratuito e crescimento
++
++**Recomendação para este sistema: PostgreSQL, começando pelo Supabase se quiser hospedagem gratuita com recursos de aplicação.** O modelo relacional combina com alunos, matrículas, turmas e presença. É uma recomendação arquitetural; este PR continua usando Firestore.
++
++| Opção | Franquia consultada em 22/10/2026 | Limite relevante |
++| --- | --- | --- |
++| Supabase Free / PostgreSQL | 500 MB de banco, 50 mil usuários ativos/mês, requisições de API ilimitadas, 5 GB de saída | CPU/RAM compartilhadas, pausa após uma semana sem atividade; requisições ilimitadas não são capacidade ilimitada. |
++| Neon Free / PostgreSQL | 1 GB por projeto, 100 CU-horas/mês por projeto | Computação, armazenamento e transferência limitam a operação; avaliar também requisitos de sincronização. |
++| Cloudflare D1 Free | 5 milhões de linhas lidas/dia, 100 mil escritas/dia, 5 GB totais | 500 MB por banco e limites de Workers; leituras contam linhas examinadas, não apenas retornadas. Não é substituição direta do SDK Firestore. |
++| PostgreSQL em servidor próprio/institucional | Software sem licença paga e sem franquia diária imposta pelo software | Servidor, discos, backup, disponibilidade e operação têm custo ou usam recursos já existentes. |
++
++Para grande escala, a licença do PostgreSQL pode continuar gratuita; hospedagem gerenciada gratuita não garante escala ilimitada. Eu começaria com a otimização atual e só migraria após medir volume e orçamento. Uma migração exigiria traduzir permissões para RLS/backend, preservar IDs e contadores, migrar autenticação ou integrá-la e reconstruir a sincronização; trocar apenas a configuração não funciona.
++
++Fontes oficiais:
++
++* Firestore cobrança e franquia: https://firebase.google.com/docs/firestore/pricing
++* Supabase: https://supabase.com/pricing
++* Neon: https://neon.com/pricing
++* D1 cobrança: https://developers.cloudflare.com/d1/platform/pricing/
++* D1 limites: https://developers.cloudflare.com/d1/platform/limits/
++* Licença PostgreSQL: https://www.postgresql.org/about/licence/
+diff --git a/tests/firestore-consumption.test.mjs b/tests/firestore-consumption.test.mjs
+new file mode 100644
+index 0000000..6d9599c
+--- /dev/null
++++ b/tests/firestore-consumption.test.mjs
+@@ -0,0 +1,174 @@
++import test from 'node:test';
++import assert from 'node:assert/strict';
++import fs from 'node:fs';
++import vm from 'node:vm';
++import {catalogueEntry} from '../assets/records-tools.mjs';
++
++const app = fs.readFileSync(new URL('../assets/app.js', import.meta.url), 'utf8');
++const extract = (start, end) => app.slice(app.indexOf(start), app.indexOf(end, app.indexOf(start)));
++function harness(source, globals) {
++  const context = vm.createContext(globals);
++  vm.runInContext(source, context);
++  return context;
++}
++function studentsHarness(getDocs) {
++  return harness(extract('async function loadStudents(', 'async function loadHistory('), {
++    state: {sessionRevision:0, classes:[{id:'a'}], studentsByClass:{}},
++    firebase:{db:{}}, collection(){}, query(){}, orderBy(){}, getDocs
++  });
++}
++test('overlapping roster requests share one query; sequential refresh remains fresh', async()=>{
++  let calls=0, release;
++  const h=studentsHarness(()=>{calls++;return new Promise(resolve=>release=resolve);});
++  const a=h.loadStudents('a'), b=h.loadStudents('a');
++  assert.equal(calls,1);
++  release({docs:[{id:'s',data:()=>({fullName:'Aluno'})}]});
++  assert.deepEqual(await a,await b);
++  const next=h.loadStudents('a');assert.equal(calls,2);release({docs:[]});await next;
++});
++test('failed roster request can retry and a removed class cannot be repopulated', async()=>{
++  let calls=0;
++  const h=studentsHarness(async()=>{if(++calls===1)throw Error('offline');return {docs:[]};});
++  await assert.rejects(h.loadStudents('a'),/offline/);
++  await h.loadStudents('a');assert.equal(calls,2);
++  h.state.classes=[];assert.equal((await h.loadStudents('a')).length,0);
++});
++test('read-only consumers reuse only the active live roster, and explicit reads still query', async()=>{
++  let calls=0;
++  const h=studentsHarness(async()=>{calls++;return {docs:[]};});
++  h.state.liveStudentsClassId='a';h.state.studentsByClass.a=[{id:'live'}];
++  assert.equal((await h.loadStudents('a',{preferLive:true}))[0].id,'live');
++  assert.equal(calls,0);
++  await h.loadStudents('a');assert.equal(calls,1);
++  assert.equal(h.state.studentsByClass.a[0].id,'live');
++});
++
++function catalogueHarness(isAdmin=true) {
++  const writes=[],batches=[];
++  const h=harness(extract('async function syncActivityCatalogue()', 'function subscribeSportsCenters()'), {
++    state:{sessionRevision:0,isAdmin,classesReady:true,catalogueReady:true,classes:[],activityCatalogue:[]},
++    catalogueEntry, firebase:{db:{}},doc:(_,collection,id)=>id,
++    writeBatch:()=>{const ops=[];return {
++      set:(id,data)=>ops.push({id,data}),delete:id=>ops.push({id,data:null}),
++      commit:async()=>{batches.push(ops);writes.push(...ops);}
++    };}
++  });
++  return {h,writes,batches};
++}
++test('catalogue does no writes for unchanged public fields and writes only the changed class',async()=>{
++  const {h,writes}=catalogueHarness();
++  h.state.classes=[{id:'a',name:'A'},{id:'b',name:'B'}];
++  h.state.activityCatalogue=h.state.classes.map(cl=>({id:cl.id,...catalogueEntry(cl)}));
++  await h.syncActivityCatalogue();assert.equal(writes.length,0);
++  h.state.classes[0].studentCount=40;
++  await h.syncActivityCatalogue();assert.equal(writes.length,0);
++  h.state.classes[0].name='Nova';
++  await h.syncActivityCatalogue();assert.equal(writes.length,1);assert.equal(writes[0].id,'a');
++  await h.syncActivityCatalogue();assert.equal(writes.length,1);
++});
++test('catalogue waits for authoritative snapshots; only admins remove stale entries',async()=>{
++  for(const admin of [false,true]){
++    const {h,writes}=catalogueHarness(admin);
++    h.state.activityCatalogue=[{id:'other',name:'Outra turma'}];
++    h.state.classesReady=false;await h.syncActivityCatalogue();assert.equal(writes.length,0);
++    h.state.classesReady=true;h.state.catalogueReady=false;
++    await h.syncActivityCatalogue();assert.equal(writes.length,0);
++    h.state.catalogueReady=true;await h.syncActivityCatalogue();
++    assert.equal(writes.length,admin?1:0);
++  }
++});
++test('catalogue batches stay bounded and queue changes while a commit is pending',async()=>{
++  const {h,batches}=catalogueHarness();
++  h.state.classes=Array.from({length:801},(_,i)=>({id:String(i),name:'Turma'}));
++  await h.syncActivityCatalogue();
++  assert.deepEqual(batches.map(b=>b.length),[400,400,1]);
++  let release;const writes=[];
++  h.writeBatch=()=>{const ops=[];return {set:(id,data)=>ops.push({id,data}),delete(){},
++    commit:()=>{writes.push(...ops);return writes.length===1?new Promise(r=>release=r):Promise.resolve();}};};
++  h.state.classes[0].name='Primeiro';
++  const first=h.syncActivityCatalogue();
++  h.state.classes[0].name='Segundo';
++  const second=h.syncActivityCatalogue();
++  release();await Promise.all([first,second]);
++  assert.deepEqual(writes.map(w=>w.data.name),['Primeiro','Segundo']);
++});
++test('catalogue retry works after failure and stops later batches after session change',async()=>{
++  const {h}=catalogueHarness();h.state.classes=[{id:'a'}];
++  h.writeBatch=()=>({set(){},commit:async()=>{throw Error('denied');}});
++  await assert.rejects(h.syncActivityCatalogue(),/denied/);
++  assert.equal(h.state.catalogueSyncPromise,null);
++  let commits=0;
++  h.writeBatch=()=>({set(){},commit:async()=>{commits++;h.state.sessionRevision++;}});
++  h.state.classes=Array.from({length:401},(_,i)=>({id:String(i)}));
++  await h.syncActivityCatalogue();assert.equal(commits,1);
++  assert.equal(h.state.activityCatalogue.length,0);
++});
++
++test('import reads a roster twice for the whole file and reuses saved identity for repeated lines',async()=>{
++  const source=extract('  async importStudents(classId, rows) {','\n};');
++  let reads=0, serial=0;const saved=[],rosters=[];
++  const h=harness('globalThis.repo={'+source+'};', {
++    state:{selectedClassId:null},loadStudents:async()=>{reads++;return [];},
++    censoKey:s=>s.toLowerCase()
++  });
++  h.repo.saveStudent=async(values,options)=>{
++    rosters.push(options.roster);saved.push(values);
++    options.onSaved({...values,id:values.studentId||String(++serial),globalStudentId:'ALU-000001',enrollmentCode:'MAT-000001'});
++  };
++  await h.repo.importStudents('a',[{fullName:'Ana'},{fullName:'Ana'},{fullName:'Ana',enrollmentCode:'MAT-000001'}]);
++  assert.equal(reads,2);assert.equal(serial,1);
++  assert.equal(saved[1].studentId,'1');assert.equal(saved[2].studentId,'1');
++  assert.ok(rosters.every(roster=>roster===rosters[0]));
++});
++test('migration with numbered roster performs no reads or writes',async()=>{
++  let reads=0,writes=0;
++  const h=harness(extract('const enrollmentMigrations =', '// Included in app.js'), {
++    loadStudents:async()=>{reads++;return [];},assignEnrollmentCode:async()=>writes++,renderClasses(){}
++  });
++  await h.migrateEnrollments('a',[{id:'s',enrollmentCode:'MAT-000001'}]);
++  assert.equal(reads,0);assert.equal(writes,0);
++});
++test('overlapping registry loads share one read and discard results after logout',async()=>{
++  let release,calls=0;
++  const h=harness(extract('async function readRegistry()', 'async function runGenderNormalization('), {
++    state:{isAdmin:true,sessionRevision:0},registryRows:[],firebase:{db:{}},collection(){},
++    getDocs:()=>{calls++;return new Promise(r=>release=r);}
++  });
++  const first=h.readRegistry(),second=h.readRegistry();assert.equal(calls,1);
++  release({docs:[{id:'ALU-1',data:()=>({fullName:'Ana'})}]});
++  await Promise.all([first,second]);assert.equal(h.registryRows[0].fullName,'Ana');
++  const ended=h.readRegistry();h.state.sessionRevision++;h.state.isAdmin=false;h.registryRows=[];
++  release({docs:[{id:'ALU-2',data:()=>({fullName:'Sessão anterior'})}]});
++  assert.equal((await ended).length,0);assert.equal(h.registryRows.length,0);
++});
++test('numbering a legacy roster reads it once and keeps transaction counters monotonic',async()=>{
++  const db=new Map([['classes/a/students/old',{enrollmentCode:'MAT-000040'}],
++    ['classes/a/students/x',{}],['classes/a/students/y',{}]]);
++  let reads=0;
++  const h=harness(extract('async function assignEnrollmentCode(', 'async function runManagementAction('), {
++    state:{},firebase:{db:{}},collection:(_, ...p)=>p.join('/'),doc:(_, ...p)=>p.join('/'),
++    getDocs:async()=>{reads++;throw Error('Unexpected collection scan');},serverTimestamp:()=>0,
++    runTransaction:async(_,fn)=>fn({
++      get:async ref=>({exists:()=>db.has(ref),data:()=>db.get(ref)}),
++      set:(ref,value)=>db.set(ref,value),
++      update:(ref,value)=>db.set(ref,{...db.get(ref),...value})
++    })
++  });
++  const roster=[{id:'old',enrollmentCode:'MAT-000040'},{id:'x'},{id:'y'}];
++  await h.assignEnrollmentCode('a','x',roster);await h.assignEnrollmentCode('a','y',roster);
++  assert.equal(reads,0);assert.equal(db.get('classes/a/students/x').enrollmentCode,'MAT-000041');
++  assert.equal(db.get('classes/a/students/y').enrollmentCode,'MAT-000042');
++});
++test('late attendance response cannot overwrite a newly selected date or ended session',async()=>{
++  let release, renders=0;
++  const h=harness(extract('async function loadAttendance()', 'async function openAttendanceFor('), {
++    state:{sessionRevision:0,attendance:{classId:'a',date:'2026-10-01'}},firebase:{db:{}},
++    doc(){},getDoc:()=>new Promise(r=>release=r),renderAttendance:()=>renders++,
++    structuredClone,localTime:()=>'',toast(){},friendlyFirebaseError:e=>e.message
++  });
++  const pending=h.loadAttendance();h.state.attendance.date='2026-10-02';
++  release({exists:()=>true,id:'2026-10-01',data:()=>({records:{s:{status:'P'}}})});
++  await pending;assert.equal(h.state.attendance.date,'2026-10-02');assert.equal(renders,0);
++  const ended=h.loadAttendance();h.state.sessionRevision++;
++  release({exists:()=>false});await ended;assert.equal(renders,0);
++});
+diff --git a/tests/registry-v11.test.mjs b/tests/registry-v11.test.mjs
+index 5ccfa13..0695cbf 100644
+--- a/tests/registry-v11.test.mjs
++++ b/tests/registry-v11.test.mjs
+@@ -31,6 +31,26 @@ function setup(cloud=false){
+   return {save:sandbox.save,store,state,db};
+ }
+ for(const cloud of [false,true]){
++  test((cloud?'cloud':'demo')+': import callback returns committed IDs and codes without changing save return type',async()=>{
++    const h=setup(cloud), roster=[];let committed;
++    const id=await h.save({classId:'a',fullName:'Aluno Importado',birthDate:'2010-01-01'},{
++      roster,onSaved:row=>{committed=row;roster.push(row);}
++    });
++    assert.equal(typeof id,'string');assert.equal(committed.id,id);
++    assert.equal(committed.globalStudentId,'ALU-000001');
++    assert.equal(committed.enrollmentCode,'MAT-000001');
++    let changed;
++    await h.save({classId:'a',studentId:id,fullName:'Aluno Importado',birthDate:'2010-01-01',neighborhood:'Centro'},{
++      roster,onSaved:row=>changed=row
++    });
++    assert.equal(changed.globalStudentId,committed.globalStudentId);
++    assert.equal(changed.enrollmentCode,committed.enrollmentCode);
++    let notified=false;
++    await assert.rejects(h.save({classId:'a',fullName:'Aluno Importado',birthDate:'2010-01-01'},{
++      roster,onSaved:()=>notified=true
++    }));
++    assert.equal(notified,false);
++  });
+   const mode=cloud?'Firestore transaction mock':'local';
+   test(`${mode}: global ID is permanent across classes; enrollment sequences remain separate`,async()=>{
+     const h=setup(cloud);
